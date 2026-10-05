@@ -27,8 +27,12 @@ class CharacterEditorSession:
 
         # Globally relevant =================
         self.character_glossary_data: dict=self.import_glossary_json()
-        self.character_tree_ids: bidict[str, str]=bidict({}) # bidict so we can lookup {hash <-> tree_id}
-        self.character_type_tree_ids: bidict[str, str]=bidict({}) # bidict so we can lookup {character_type <-> tree_id}
+
+        self.treeview_icons = {}
+        for fp in os.listdir(TREEVIEW_ICONS_FP):
+            if fp.endswith(".png"):
+                with Image.open(os.path.join(TREEVIEW_ICONS_FP, fp)) as temp_image:
+                    self.treeview_icons[fp.removesuffix(".png")] = ImageTk.PhotoImage(temp_image.copy(), master=master)
 
         # Relevant to current character =====
         self.current_stroke_idx: int=0
@@ -38,6 +42,8 @@ class CharacterEditorSession:
         self.character_stroke_weight_vars: list[tk.IntVar]=[]
         self.character_stroke_profile_control_points: list[list[tuple[float,float]]]=[]
         self.character_stroke_profile_bounds_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
+
+        self.character_stroke_parentage: dict[int,list[int]]={}
 
         self.character_type_var=tk.StringVar(master, "")
         self.character_defs_vars: list[tk.StringVar]=[]
@@ -291,15 +297,69 @@ class CharacterEditorSession:
         item["stroke_profile_control_points"] = character_stroke_profile_control_points
         item["stroke_profile_bounds"] = active_stroke_profile_bounds
 
-class CharacterSelect(tk.Frame):
+class StrokeHierarchy(tk.Frame):
     def __init__(self, parent, session: CharacterEditorSession):
-        super().__init__(parent)
         self.session: CharacterEditorSession=session
+
+        self.stroke_tree_ids: bidict[int, str]=bidict({}) # bidict so we can lookup {hash <-> tree_id}
+
+        super().__init__(parent)
+        self.columnconfigure(0, weight=1)
+
+        self.dictionary_treeview=ttk.Treeview(self)
+        self.dictionary_treeview.grid(column=0, row=1, sticky="NSEW")
+        self.dictionary_treeview.bind("<ButtonPress-1>", self.drag_control_point_start)
+        self.dictionary_treeview.bind("<ButtonRelease-1>", self.drag_control_point_end)
+
+        self.refresh()
+
+    def refresh(self):
+        """
+        Constructs hierarchy of strokes in accordance with `self.session.character_stroke_parentage`.
+        """
+        # 1. Clear the treeview --------------------------------
+        tv: ttk.Treeview=self.dictionary_treeview
+        tv.delete(*tv.get_children())
+        self.stroke_tree_ids=bidict({})
+
+        tv.heading("#0", text="Character")
+        tv.heading("defs", text="Definition(s)")
+
+        tv.tag_configure('headings', image=self.session.treeview_icons["numpage"])
+        tv.tag_configure('selected', background="#b2cdec", image=self.session.treeview_icons["paint"])
+
+        root_id=tv.insert("",
+                          tk.END,
+                          text=f"root",
+                          open=True,
+                          tags=('headings',)
+                          )
+
+        # 3. add the character items
+        for idx, item in enumerate(self.session.character_stroke_control_points):
+            row_tags = ('selected',) if idx == self.session.current_stroke_idx else ('unselected',)
+
+            tree_id=tv.insert(root_id,
+                              tk.END,
+                              text=f"{idx}",
+                              tags=row_tags
+                              )
+            self.stroke_tree_ids[idx]=tree_id
+
+        if self.session.current_stroke_idx in self.stroke_tree_ids:
+            tv.see(item=self.stroke_tree_ids[self.session.current_stroke_idx])
+
+class CharacterHierarchy(tk.Frame):
+    def __init__(self, parent, session: CharacterEditorSession):
+        self.session: CharacterEditorSession=session
+        
+        self.character_tree_ids: bidict[str, str]=bidict({}) # bidict so we can lookup {hash <-> tree_id}
+        self.character_type_tree_ids: bidict[str, str]=bidict({}) # bidict so we can lookup {character_type <-> tree_id}
+
+        super().__init__(parent)
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
         self.rowconfigure(1, weight=8)
-
-        self.character_treeview_icons: dict[str, ImageTk.PhotoImage] = {}
 
         tk.Button(self, text="+ Add new entry", command=self.add_entry).grid(column=0, row=0, sticky="EW")
 
@@ -308,13 +368,6 @@ class CharacterSelect(tk.Frame):
         self.dictionary_treeview.bind("<ButtonPress-1>", self.leftclick_entry)
         self.dictionary_treeview.bind("<ButtonPress-2>", self.middleclick_entry)
         self.dictionary_treeview.bind("<ButtonPress-3>", self.rightclick_entry)
-
-        for fp in os.listdir(TREEVIEW_ICONS_FP):
-            if fp.endswith(".png"):
-                with Image.open(os.path.join(TREEVIEW_ICONS_FP, fp)) as temp_image:
-                    self.character_treeview_icons[fp.removesuffix(".png")] = ImageTk.PhotoImage(
-                        temp_image.copy(), master=self
-                    )
 
         self.refresh()
 
@@ -325,14 +378,14 @@ class CharacterSelect(tk.Frame):
         # 1. Clear the treeview --------------------------------
         tv: ttk.Treeview=self.dictionary_treeview
         tv.delete(*tv.get_children())
-        self.session.character_type_tree_ids=bidict({})
-        self.session.character_tree_ids=bidict({})
+        self.character_type_tree_ids=bidict({})
+        self.character_tree_ids=bidict({})
 
         tv.heading("#0", text="Character")
         tv.heading("defs", text="Definition(s)")
 
-        tv.tag_configure('headings', image=self.character_treeview_icons["folder"])
-        tv.tag_configure('selected', background="#b2cdec", image=self.character_treeview_icons["editing"])
+        tv.tag_configure('headings', image=self.session.treeview_icons["folder"])
+        tv.tag_configure('selected', background="#b2cdec", image=self.session.treeview_icons["editing"])
 
         # 2. build the character_type groups first
         for heading in list(typing.get_args(CHARACTER_TYPES)):
@@ -342,7 +395,7 @@ class CharacterSelect(tk.Frame):
                                 open=True,
                                 tags=('headings',)
                                 )
-            self.session.character_type_tree_ids[heading]=tree_id
+            self.character_type_tree_ids[heading]=tree_id
 
         # 3. add the character items
         for hash, item in self.session.character_glossary_data.items():
@@ -353,26 +406,26 @@ class CharacterSelect(tk.Frame):
             if len(char.definition) > 1:
                 extra_defs_text = f" (+{len(char.definition)-1} more...)"
 
-            tree_id=tv.insert(self.session.character_type_tree_ids[char.character_type],
+            tree_id=tv.insert(self.character_type_tree_ids[char.character_type],
                                 tk.END,
                                 text=f"{hash}",
                                 values=(f"{char.definition[0]}{extra_defs_text}",),
                                 tags=row_tags
                                 )
-            self.session.character_tree_ids[hash]=tree_id
+            self.character_tree_ids[hash]=tree_id
 
-        if self.session.character_hash in self.session.character_tree_ids:
-            tv.see(item=self.session.character_tree_ids[self.session.character_hash])
+        if self.session.character_hash in self.character_tree_ids:
+            tv.see(item=self.character_tree_ids[self.session.character_hash])
 
     def update_active_entry(self):
         self.session.commit_active_character_to_memory()
         active_hash = self.session.character_hash
-        tree_id = self.session.character_tree_ids.get(active_hash)
+        tree_id = self.character_tree_ids.get(active_hash)
         if tree_id is None:
             return
 
         item = self.session.character_glossary_data[active_hash]
-        group_id = self.session.character_type_tree_ids.get(item["character_type"])
+        group_id = self.character_type_tree_ids.get(item["character_type"])
         if group_id is not None and self.dictionary_treeview.parent(tree_id) != group_id:
             self.dictionary_treeview.move(tree_id, group_id, tk.END)
 
@@ -389,14 +442,14 @@ class CharacterSelect(tk.Frame):
         """
         tv: ttk.Treeview=self.dictionary_treeview
         item=tv.identify("item", event.x, event.y)
-        hash=self.session.character_tree_ids.inverse.get(item)
+        hash=self.character_tree_ids.inverse.get(item)
         if hash is not None:
             self.session.select_character(hash)
 
     def middleclick_entry(self, event: tk.Event):
         tv: ttk.Treeview=self.dictionary_treeview
         item=tv.identify("item", event.x, event.y)
-        hash=self.session.character_tree_ids.inverse.get(item, None)
+        hash=self.character_tree_ids.inverse.get(item, None)
 
         if hash:
             character_to_clone = copy.deepcopy(self.session.character_glossary_data[hash])
@@ -406,7 +459,7 @@ class CharacterSelect(tk.Frame):
     def rightclick_entry(self, event: tk.Event):
         tv: ttk.Treeview=self.dictionary_treeview
         item=tv.identify("item", event.x, event.y)
-        hash=self.session.character_tree_ids.inverse.get(item, None)
+        hash=self.character_tree_ids.inverse.get(item, None)
 
         if hash:
             answer = messagebox.askyesno("Remove entry",
@@ -424,7 +477,7 @@ class CharacterSelect(tk.Frame):
         if character_template is None:
             # if the user has a type selected, new entry should be placed here
             # otherwise, go with the active-character's type
-            focus_character_type = self.session.character_type_tree_ids.inverse.get(tv.focus(), None)
+            focus_character_type = self.character_type_tree_ids.inverse.get(tv.focus(), None)
             if focus_character_type is None:
                     focus_character_type = self.session.character_type_var.get()
 
@@ -949,8 +1002,8 @@ class DrawingTool(tk.Frame):
         self.left_pane.rowconfigure(4, weight=1)
         self.left_pane.grid(column=0, row=0, sticky="NSEW", padx=12)
 
-        self.character_select = CharacterSelect(self.left_pane, self.session)
-        self.character_select.grid(column=0, row=0, sticky="NSEW")
+        self.character_hierarchy = CharacterHierarchy(self.left_pane, self.session)
+        self.character_hierarchy.grid(column=0, row=0, sticky="NSEW")
         self.character_type = CharacterType(self.left_pane, self.session)
         self.character_type.grid(column=0, row=1, sticky="EW")
         self.character_definitions = CharacterDefinitions(self.left_pane, self.session)
@@ -976,15 +1029,15 @@ class DrawingTool(tk.Frame):
 
     def refresh(self, change: str = "all"):
         if change == "list":
-            self.character_select.refresh()
+            self.character_hierarchy.refresh()
         elif change == "metadata":
-            self.character_select.update_active_entry()
+            self.character_hierarchy.update_active_entry()
         elif change == "preview":
             self.character_preview.refresh()
         elif change in ("selection", "stroke", "all"):
             if change in ("selection", "all"):
                 self._rebuild_character_fields()
-                self.character_select.refresh()
+                self.character_hierarchy.refresh()
             self.stroke_editor.refresh()
             self.character_preview.refresh()
 
