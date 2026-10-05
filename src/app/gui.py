@@ -336,18 +336,18 @@ class StrokeHierarchy(tk.Frame):
         tv.tag_configure('headings', image=self.session.treeview_icons["numpage"])
         tv.tag_configure('selected', background="#b2cdec", image=self.session.treeview_icons["paint"])
 
-        root_id=tv.insert("",
-                          tk.END,
-                          text=f"root",
-                          open=True,
-                          tags=('headings',)
-                          )
+        self.tree_root_id=tv.insert("",
+                                    tk.END,
+                                    text=f"root",
+                                    open=True,
+                                    tags=('headings',)
+                                    )
 
         # 3. add the character items
         for idx, item in enumerate(self.session.character_stroke_control_points):
             row_tags = ('selected',) if idx == self.session.current_stroke_idx else ('unselected',)
 
-            tree_id=tv.insert(root_id,
+            tree_id=tv.insert(self.tree_root_id,
                               tk.END,
                               text=f"{idx}",
                               tags=row_tags
@@ -371,6 +371,39 @@ class StrokeHierarchy(tk.Frame):
         if idx is not None:
             if idx == self.selected_stroke_idx:
                 self.session.select_stroke(idx)
+            else:
+                self.parent_stroke(self.selected_stroke_idx, idx)
+        elif item == self.tree_root_id:
+            self.unparent_stroke(self.selected_stroke_idx)
+
+    def parent_stroke(self, child_stroke_idx: int, parent_stroke_idx: int):
+        all_parents = self.session.character_stroke_parentage.keys()
+        all_children = [l1 for l0 in self.session.character_stroke_parentage.values() for l1 in l0]
+        if child_stroke_idx in all_parents:
+            print(f"Cannot make a parent the child of another! Remove its children first if you want to do this.")
+        elif parent_stroke_idx in all_children:
+            print(f"Cannot make a child the parent of another! Remove its parent first if you want to do this.")
+        else:
+            # doesn't need to be a catch case for same -> same, as we unparent first anyway
+            self.unparent_stroke(child_stroke_idx)
+
+            parent_list =  self.session.character_stroke_parentage.get(parent_stroke_idx,[])
+            parent_list.append(child_stroke_idx)
+            self.session.character_stroke_parentage[parent_stroke_idx] = parent_list
+
+    def unparent_stroke(self, child_stroke_idx: int):
+        tmp_dict = {}
+        for k,v in self.session.character_stroke_parentage.items():
+            if child_stroke_idx in v:
+                _ = v.pop(v.index(child_stroke_idx))
+                print(f"Removed child stroke {child_stroke_idx} from parent stroke {k}")
+
+            if len(v) > 0:
+                tmp_dict[k] = v
+
+        # assign a rebuilt dict, minus any 0-length list items
+        self.session.character_stroke_parentage = tmp_dict
+
 
 
 class CharacterHierarchy(tk.Frame):
