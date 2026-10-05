@@ -13,44 +13,8 @@ from src.symbols.utils import bezier
 from src.symbols.characters.base import CHARACTER_TYPES, Character
 from src.symbols.brushstrokes import CurveProfile, BrushStroke, BrushStrokeGroup, StrokeCollection
 
-TREEVIEW_ICONS_FP="src/gui/icons"
+TREEVIEW_ICONS_FP="src/app/icons"
 GLOSSARY_JSON_FP="src/dictionary/data/glossary.json"
-
-class OptionDialog(tk.Toplevel):
-    """
-        This dialog accepts a list of options.
-        If an option is selected, the results property is to that option value
-        If the box is closed, the results property is set to zero
-    """
-    def __init__(self,parent,title,question,options):
-        super().__init__(self,parent)
-        self.title(title)
-        self.question = question
-        self.transient(parent)
-        self.protocol("WM_DELETE_WINDOW",self.cancel)
-        self.options = options
-        self.createWidgets()
-        self.grab_set()
-
-        # await user response
-        self.wait_window()
-    def createWidgets(self):
-        frmQuestion = tk.Frame(self)
-        tk.Label(frmQuestion,text=self.question).grid()
-        frmQuestion.grid(row=1)
-        frmButtons = tk.Frame(self)
-        frmButtons.grid(row=2)
-        column = 0
-        for option in self.options:
-            btn = tk.Button(frmButtons,text=option,command=lambda x=option:self.setOption(x))
-            btn.grid(column=column,row=0)
-            column += 1 
-    def setOption(self,optionSelected):
-        self.destroy()
-        return optionSelected
-    def cancel(self):
-        self.destroy()
-        return None
 
 class CurveProfileWidget(tk.Frame):
     PADDING_PX = 16
@@ -953,12 +917,3 @@ class DrawingTool(tk.Frame):
                                                     x * self.CELL_SIZE + self.CELL_SIZE/2,
                                                     y * self.CELL_SIZE + self.CELL_SIZE/2,
                                                     width=1, fill="#666")
-
-# Main app -------------
-root=tk.Tk()
-root.title("Character Drawing Tool DEBUG")
-drawing_tool = DrawingTool(root)
-drawing_tool.pack(fill="both", expand=True)
-root.protocol("WM_DELETE_WINDOW", drawing_tool.on_app_close)
-
-root.mainloop()
