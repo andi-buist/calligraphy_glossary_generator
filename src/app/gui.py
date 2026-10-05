@@ -109,6 +109,16 @@ class CharacterEditorSession:
         self.commit_active_character_to_memory()
         save_file_beautiful(self.character_glossary_data)
 
+    def select_stroke(self, idx: int):
+        """
+        Selects a stroke by its idx (if it exists)
+        """
+        if idx < len(self.character_stroke_control_points):
+            self.current_stroke_idx=idx
+            self.refresh("stroke")
+        else:
+            raise KeyError(f"{idx} is not a valid stroke index.")
+    
     def select_character(self, hash: str, save_current: bool = True):
         """
         Selects a character by its hash (if it exists)
@@ -301,15 +311,16 @@ class StrokeHierarchy(tk.Frame):
     def __init__(self, parent, session: CharacterEditorSession):
         self.session: CharacterEditorSession=session
 
+        self.selected_stroke_idx:int=None
+
         self.stroke_tree_ids: bidict[int, str]=bidict({}) # bidict so we can lookup {hash <-> tree_id}
 
         super().__init__(parent)
-        self.columnconfigure(0, weight=1)
 
-        self.dictionary_treeview=ttk.Treeview(self)
-        self.dictionary_treeview.grid(column=0, row=1, sticky="NSEW")
-        self.dictionary_treeview.bind("<ButtonPress-1>", self.drag_control_point_start)
-        self.dictionary_treeview.bind("<ButtonRelease-1>", self.drag_control_point_end)
+        self.dictionary_treeview=ttk.Treeview(self, show="tree")
+        self.dictionary_treeview.pack(expand=True, fill="both")
+        self.dictionary_treeview.bind("<ButtonPress-1>", self.drag_stroke_item_start)
+        self.dictionary_treeview.bind("<ButtonRelease-1>", self.drag_stroke_item_end)
 
         self.refresh()
 
@@ -321,9 +332,6 @@ class StrokeHierarchy(tk.Frame):
         tv: ttk.Treeview=self.dictionary_treeview
         tv.delete(*tv.get_children())
         self.stroke_tree_ids=bidict({})
-
-        tv.heading("#0", text="Character")
-        tv.heading("defs", text="Definition(s)")
 
         tv.tag_configure('headings', image=self.session.treeview_icons["numpage"])
         tv.tag_configure('selected', background="#b2cdec", image=self.session.treeview_icons["paint"])
@@ -349,6 +357,22 @@ class StrokeHierarchy(tk.Frame):
         if self.session.current_stroke_idx in self.stroke_tree_ids:
             tv.see(item=self.stroke_tree_ids[self.session.current_stroke_idx])
 
+    def drag_stroke_item_start(self, event: tk.Event):
+        tv: ttk.Treeview=self.dictionary_treeview
+        item=tv.identify("item", event.x, event.y)
+        idx=self.stroke_tree_ids.inverse.get(item)
+        if idx is not None:
+            self.selected_stroke_idx=idx
+
+    def drag_stroke_item_end(self, event: tk.Event):
+        tv: ttk.Treeview=self.dictionary_treeview
+        item=tv.identify("item", event.x, event.y)
+        idx=self.stroke_tree_ids.inverse.get(item)
+        if idx is not None:
+            if idx == self.selected_stroke_idx:
+                self.session.select_stroke(idx)
+
+
 class CharacterHierarchy(tk.Frame):
     def __init__(self, parent, session: CharacterEditorSession):
         self.session: CharacterEditorSession=session
@@ -357,14 +381,11 @@ class CharacterHierarchy(tk.Frame):
         self.character_type_tree_ids: bidict[str, str]=bidict({}) # bidict so we can lookup {character_type <-> tree_id}
 
         super().__init__(parent)
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
-        self.rowconfigure(1, weight=8)
 
-        tk.Button(self, text="+ Add new entry", command=self.add_entry).grid(column=0, row=0, sticky="EW")
+        tk.Button(self, text="+ Add new entry", command=self.add_entry).pack(fill="x")
 
-        self.dictionary_treeview=ttk.Treeview(self, columns=("defs"))
-        self.dictionary_treeview.grid(column=0, row=1, sticky="NSEW")
+        self.dictionary_treeview=ttk.Treeview(self, columns=("defs"), height=16)
+        self.dictionary_treeview.pack(fill="x")
         self.dictionary_treeview.bind("<ButtonPress-1>", self.leftclick_entry)
         self.dictionary_treeview.bind("<ButtonPress-2>", self.middleclick_entry)
         self.dictionary_treeview.bind("<ButtonPress-3>", self.rightclick_entry)
@@ -863,8 +884,11 @@ class StrokeEditor(tk.Frame):
                 print(f"Current stroke is incomplete, staying put")
                 new_idx = self.session.current_stroke_idx
         self.session.current_stroke_idx = new_idx
-        self.session.stroke_changed()
+
         self.remove_empty_strokes()
+
+        self.session.stroke_changed()
+
 
     def leftclick_x_y(self, event: tk.Event):
         """
@@ -983,8 +1007,9 @@ class DrawingTool(tk.Frame):
         self.refresh("all")
 
     def _build_layout(self):
-        self.columnconfigure(0, weight=1)
+        self.columnconfigure(0, weight=2)
         self.columnconfigure(1, weight=3)
+        self.columnconfigure(2, weight=1)
         self.rowconfigure(0, weight=1)
 
         self.left_pane=tk.Frame(
@@ -994,38 +1019,43 @@ class DrawingTool(tk.Frame):
             highlightthickness=1,
             highlightbackground="black",
         )
-        self.left_pane.columnconfigure(0, weight=1)
-        self.left_pane.rowconfigure(0, weight=4)
-        self.left_pane.rowconfigure(1, weight=1)
-        self.left_pane.rowconfigure(2, weight=4)
-        self.left_pane.rowconfigure(3, weight=3)
-        self.left_pane.rowconfigure(4, weight=1)
         self.left_pane.grid(column=0, row=0, sticky="NSEW", padx=12)
 
         self.character_hierarchy = CharacterHierarchy(self.left_pane, self.session)
-        self.character_hierarchy.grid(column=0, row=0, sticky="NSEW")
+        self.character_hierarchy.pack(fill="both")
+
+        ttk.Separator(self.left_pane).pack(fill="x", pady=8)
+
         self.character_type = CharacterType(self.left_pane, self.session)
-        self.character_type.grid(column=0, row=1, sticky="EW")
+        self.character_type.pack(fill="x")
         self.character_definitions = CharacterDefinitions(self.left_pane, self.session)
-        self.character_definitions.grid(column=0, row=2, sticky="NEW")
-        self.character_preview = CharacterPreview(self.left_pane, self.session)
-        self.character_preview.grid(column=0, row=3, sticky="NEW")
-        tk.Button(
-            self.left_pane,
-            text="Save",
-            command=self.session.save_glossary_to_json,
-        ).grid(column=0, row=4, sticky="EW")
+        self.character_definitions.pack(fill="x")
 
         self.stroke_editor = StrokeEditor(self, self.session)
         self.stroke_editor.grid(column=1, row=0, sticky="NSEW", padx=12)
+
+        self.right_pane=tk.Frame(
+            self,
+            padx=4,
+            pady=4,
+            highlightthickness=1,
+            highlightbackground="black"
+            )
+        self.right_pane.columnconfigure(0, weight=1)
+        self.right_pane.grid(column=2, row=0, sticky="NSEW", padx=12)
+
+        self.stroke_hierarchy = StrokeHierarchy(self.right_pane, self.session)
+        self.stroke_hierarchy.pack(expand=True, fill="both")
+        self.character_preview = CharacterPreview(self.right_pane, self.session)
+        self.character_preview.pack(fill="both", pady=8)
 
     def _rebuild_character_fields(self):
         self.character_type.destroy()
         self.character_definitions.destroy()
         self.character_type = CharacterType(self.left_pane, self.session)
-        self.character_type.grid(column=0, row=1, sticky="EW")
+        self.character_type.pack(fill="x")
         self.character_definitions = CharacterDefinitions(self.left_pane, self.session)
-        self.character_definitions.grid(column=0, row=2, sticky="EW")
+        self.character_definitions.pack(fill="x")
 
     def refresh(self, change: str = "all"):
         if change == "list":
@@ -1039,6 +1069,7 @@ class DrawingTool(tk.Frame):
                 self._rebuild_character_fields()
                 self.character_hierarchy.refresh()
             self.stroke_editor.refresh()
+            self.stroke_hierarchy.refresh()
             self.character_preview.refresh()
 
     def on_app_close(self):
