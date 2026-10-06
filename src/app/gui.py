@@ -26,7 +26,9 @@ class CharacterEditorSession:
         self.on_change: typing.Callable[[str], None] | None = None
 
         # Globally relevant =================
-        self.character_glossary_data: dict=self.import_glossary_json()
+        self.character_glossary_data: dict={}
+        self.character_glossary_stroke_parentage_data: dict[str,dict[int,list[int]]]={}
+        self.import_glossary_json()
 
         self.treeview_icons = {}
         for fp in os.listdir(TREEVIEW_ICONS_FP):
@@ -42,8 +44,6 @@ class CharacterEditorSession:
         self.character_stroke_weight_vars: list[tk.IntVar]=[]
         self.character_stroke_profile_control_points: list[list[tuple[float,float]]]=[]
         self.character_stroke_profile_bounds_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
-
-        self.character_stroke_parentage: dict[int,list[int]]={}
 
         self.character_type_var=tk.StringVar(master, "")
         self.character_defs_vars: list[tk.StringVar]=[]
@@ -65,49 +65,71 @@ class CharacterEditorSession:
             self.on_change(change)
 
     def import_glossary_json(self):
-        def is_valid_character_definition(item: dict) -> bool:
-            """
-            Safety check to ensure glossary json is not malformed against expected `Character` construction attributes.
-            """
-            _character_type=item.get("character_type")
-            _definitions=item.get("definition")
-            _strokes=item.get("stroke_control_points")
-            _stroke_weights=item.get("stroke_weights")
+        def unnest_parented_strokes(strokes: list[ list[list[float,float]] | list[list[list[float,float]]] ]):
+            flat_strokes: list[list[tuple[float,float]]]=[]
+            stroke_parentage: dict[int,list[int]]={}
 
-            return all([_character_type in list(typing.get_args(CHARACTER_TYPES)),
-                        len(_definitions) > 0,
-                        len(_strokes) > 0,
-                        len(_stroke_weights) > 0,
-                        len(_strokes) == len(_stroke_weights)])
+            for stroke in strokes:
+                if not isinstance(stroke[0][0], float):
+                    parent_idx=None
+                    for subidx, substroke in enumerate(stroke):
+                        stroke_idx=len(flat_strokes)
+                        if subidx == 0:
+                            parent_idx=stroke_idx
+                            stroke_parentage[parent_idx] = []
+                        else:
+                            stroke_parentage[parent_idx].append(stroke_idx)
+                        
+                        flat_strokes.append(substroke)
+                else:
+                    flat_strokes.append(stroke)
 
-        output_dict: dict={}
+            return flat_strokes, stroke_parentage
+        
         with open(GLOSSARY_JSON_FP, "r") as file:
             source_dict: dict[str, dict]=json.load(file)
 
-        for k,v in source_dict.items():
-            if is_valid_character_definition(v):
-                output_dict[k]=v.copy()
+        for hash, data in source_dict.items():
+            flat_strokes, stroke_parentage = unnest_parented_strokes(data.get("stroke_control_points"))
 
-                for idx, coord_list in enumerate(v.get("stroke_control_points")):
-                    stroke_coords: list[tuple[float,float]]=[]
-                    for coord in coord_list:
-                        stroke_coords.append((coord[0], coord[1]))
-                    output_dict[k]["stroke_control_points"][idx]=stroke_coords
-            else:
-                raise ValueError(f"Character {k} is incorrectly defined, check glossary json.")
+            self.character_glossary_data[hash]=data.copy()
+            self.character_glossary_data[hash]["stroke_control_points"]=flat_strokes
+            self.character_glossary_stroke_parentage_data[hash]=stroke_parentage
 
-        return output_dict
+    def export_file_beautiful(self, data: dict, fp: str):
+        with open(fp, "w") as file:
+            options = jsbeautifier.default_options()
+            options.indent_size = 2
 
-    def save_glossary_to_json(self):
-        def save_file_beautiful(data: dict):
-            with open(GLOSSARY_JSON_FP, "w") as file:
-                options = jsbeautifier.default_options()
-                options.indent_size = 2
+            file.write(jsbeautifier.beautify(json.dumps(data), options))
 
-                file.write(jsbeautifier.beautify(json.dumps(data), options))
+    def export_glossary_json(self):
+        def reparent_flattened_strokes():
+            output_dict=copy.deepcopy(self.character_glossary_data)          
+
+            for hash, parentage_data in self.character_glossary_stroke_parentage_data.items():
+                character_with_parentage: dict=output_dict[hash]
+
+                all_parents = parentage_data.keys()
+                all_children = [l1 for l0 in parentage_data.values() for l1 in l0]
+
+                reparented_stroke_control_points=[]
+                for idx, stroke in enumerate(character_with_parentage.get("stroke_control_points")):
+                    if idx in all_parents:
+                        #is a parent
+                        sublist = [stroke, *[character_with_parentage.get("stroke_control_points")[cidx] for cidx in parentage_data[idx]]]
+                        reparented_stroke_control_points.append(sublist)
+                    elif idx not in all_children:
+                        #is not a child
+                        reparented_stroke_control_points.append(stroke)
+
+                character_with_parentage["stroke_control_points"]=reparented_stroke_control_points
+            
+            return output_dict
 
         self.commit_active_character_to_memory()
-        save_file_beautiful(self.character_glossary_data)
+        data=reparent_flattened_strokes()
+        self.export_file_beautiful(data, GLOSSARY_JSON_FP)
 
     def select_stroke(self, idx: int):
         """
@@ -333,26 +355,49 @@ class StrokeHierarchy(tk.Frame):
         tv.delete(*tv.get_children())
         self.stroke_tree_ids=bidict({})
 
-        tv.tag_configure('headings', image=self.session.treeview_icons["numpage"])
+        tv.tag_configure('heading', image=self.session.treeview_icons["numpage"])
+        tv.tag_configure('anchor', image=self.session.treeview_icons["anchor"])
         tv.tag_configure('selected', background="#b2cdec", image=self.session.treeview_icons["paint"])
 
         self.tree_root_id=tv.insert("",
                                     tk.END,
                                     text=f"root",
                                     open=True,
-                                    tags=('headings',)
+                                    tags=('heading',)
                                     )
 
         # 3. add the character items
+        character_parentage=self.session.character_glossary_stroke_parentage_data[self.session.character_hash]
+        all_parents=character_parentage.keys()
+        all_children=[l1 for l0 in character_parentage.values() for l1 in l0]
         for idx, item in enumerate(self.session.character_stroke_control_points):
-            row_tags = ('selected',) if idx == self.session.current_stroke_idx else ('unselected',)
+            if idx in all_parents:
+                row_tags = ('anchor','selected') if idx == self.session.current_stroke_idx else ('anchor','unselected')
+                parent_tree_id=tv.insert(self.tree_root_id,
+                                tk.END,
+                                text=f"{idx}",
+                                open=True,
+                                tags=row_tags
+                                )
+                self.stroke_tree_ids[idx]=parent_tree_id
+                for cidx in character_parentage[idx]:
+                    row_tags = ('selected',) if cidx == self.session.current_stroke_idx else ('unselected',)
+                    child_tree_id=tv.insert(parent_tree_id,
+                                    tk.END,
+                                    text=f"{cidx}",
+                                    open=True,
+                                    tags=row_tags
+                                    )
+                    self.stroke_tree_ids[cidx]=child_tree_id
+            elif idx not in all_children:
+                row_tags = ('selected',) if idx == self.session.current_stroke_idx else ('unselected',)
 
-            tree_id=tv.insert(self.tree_root_id,
-                              tk.END,
-                              text=f"{idx}",
-                              tags=row_tags
-                              )
-            self.stroke_tree_ids[idx]=tree_id
+                tree_id=tv.insert(self.tree_root_id,
+                                tk.END,
+                                text=f"{idx}",
+                                tags=row_tags
+                                )
+                self.stroke_tree_ids[idx]=tree_id
 
         if self.session.current_stroke_idx in self.stroke_tree_ids:
             tv.see(item=self.stroke_tree_ids[self.session.current_stroke_idx])
@@ -377,8 +422,10 @@ class StrokeHierarchy(tk.Frame):
             self.unparent_stroke(self.selected_stroke_idx)
 
     def parent_stroke(self, child_stroke_idx: int, parent_stroke_idx: int):
-        all_parents = self.session.character_stroke_parentage.keys()
-        all_children = [l1 for l0 in self.session.character_stroke_parentage.values() for l1 in l0]
+        current_character_parentage: dict[int, list[int]]=self.session.character_glossary_stroke_parentage_data[self.session.character_hash].copy()
+
+        all_parents = current_character_parentage.keys()
+        all_children = [l1 for l0 in current_character_parentage.values() for l1 in l0]
         if child_stroke_idx in all_parents:
             print(f"Cannot make a parent the child of another! Remove its children first if you want to do this.")
         elif parent_stroke_idx in all_children:
@@ -387,13 +434,18 @@ class StrokeHierarchy(tk.Frame):
             # doesn't need to be a catch case for same -> same, as we unparent first anyway
             self.unparent_stroke(child_stroke_idx)
 
-            parent_list =  self.session.character_stroke_parentage.get(parent_stroke_idx,[])
+            parent_list = current_character_parentage.get(parent_stroke_idx,[])
             parent_list.append(child_stroke_idx)
-            self.session.character_stroke_parentage[parent_stroke_idx] = parent_list
+            self.session.character_glossary_stroke_parentage_data[self.session.character_hash][parent_stroke_idx] = sorted(parent_list)
+
+            print(f"Added child stroke {child_stroke_idx} to parent stroke {parent_stroke_idx}")
+            self.refresh()
 
     def unparent_stroke(self, child_stroke_idx: int):
+        current_character_parentage: dict[int, list[int]]=self.session.character_glossary_stroke_parentage_data[self.session.character_hash].copy()
+
         tmp_dict = {}
-        for k,v in self.session.character_stroke_parentage.items():
+        for k,v in current_character_parentage.items():
             if child_stroke_idx in v:
                 _ = v.pop(v.index(child_stroke_idx))
                 print(f"Removed child stroke {child_stroke_idx} from parent stroke {k}")
@@ -402,9 +454,8 @@ class StrokeHierarchy(tk.Frame):
                 tmp_dict[k] = v
 
         # assign a rebuilt dict, minus any 0-length list items
-        self.session.character_stroke_parentage = tmp_dict
-
-
+        self.session.character_glossary_stroke_parentage_data[self.session.character_hash] = tmp_dict
+        self.refresh()
 
 class CharacterHierarchy(tk.Frame):
     def __init__(self, parent, session: CharacterEditorSession):
@@ -438,7 +489,7 @@ class CharacterHierarchy(tk.Frame):
         tv.heading("#0", text="Character")
         tv.heading("defs", text="Definition(s)")
 
-        tv.tag_configure('headings', image=self.session.treeview_icons["folder"])
+        tv.tag_configure('heading', image=self.session.treeview_icons["folder"])
         tv.tag_configure('selected', background="#b2cdec", image=self.session.treeview_icons["editing"])
 
         # 2. build the character_type groups first
@@ -447,7 +498,7 @@ class CharacterHierarchy(tk.Frame):
                                 tk.END,
                                 text=f"{heading.title()}",
                                 open=True,
-                                tags=('headings',)
+                                tags=('heading',)
                                 )
             self.character_type_tree_ids[heading]=tree_id
 
@@ -524,6 +575,7 @@ class CharacterHierarchy(tk.Frame):
             if answer:
                 self.remove_entry(hash)
 
+    # TODO: add and remove need partially bringing out to be session methods
     def add_entry(self, character_template: dict | None = None):
         tv: ttk.Treeview=self.dictionary_treeview
         hash: str=secrets.token_hex(4)
@@ -545,8 +597,9 @@ class CharacterHierarchy(tk.Frame):
                 }
 
         self.session.character_glossary_data[hash]=copy.deepcopy(character_template)
+        self.session.character_glossary_stroke_parentage_data[hash]={}
         self.session.select_character(hash, save_current=True)
-        self.session.save_glossary_to_json()
+        self.session.export_glossary_json()
 
     def remove_entry(self, hash: str):
         self.session.commit_active_character_to_memory()
@@ -567,11 +620,13 @@ class CharacterHierarchy(tk.Frame):
             next_active_hash=hashes[removed_idx - 1] if removed_idx > 0 else hashes[1]
 
         del self.session.character_glossary_data[hash]
+        del self.session.character_glossary_stroke_parentage_data[hash]
+
         if removing_active:
             self.session.select_character(next_active_hash, save_current=False)
         else:
             self.session.refresh("list")
-        self.session.save_glossary_to_json()
+        self.session.export_glossary_json()
 
 class CharacterType(tk.Frame):
     def __init__(self, parent, session: CharacterEditorSession):
@@ -1112,5 +1167,5 @@ class DrawingTool(tk.Frame):
             parent=self.winfo_toplevel(),
         )
         if answer:
-            self.session.save_glossary_to_json()
+            self.session.export_glossary_json()
             self.winfo_toplevel().destroy()
