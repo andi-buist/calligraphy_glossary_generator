@@ -1,3 +1,5 @@
+import math
+
 def pascal_row(n):
             """
             Returns the nth row of Pascal's triangle to solve the generalized Bezier Curve formula
@@ -112,3 +114,101 @@ def get_bezier_path_points(control_points: list[tuple[float,float]], weight: int
         # generate points from bezier (these will be variably spaced based on weighting), then resample by density
         bezier_points = make_bezier(weighted_path)([t/N_POINTS for t in range(0, N_POINTS + 1)])
         return resample_by_arc_length(bezier_points, sample_spacing=SAMPLE_SPACING)
+
+def evaluate_catmull_rom_segment(
+    p0: tuple[float, float], 
+    p1: tuple[float, float], 
+    p2: tuple[float, float], 
+    p3: tuple[float, float], 
+    num_points: int,
+    alpha: float = 1.0
+) -> list[tuple[float, float]]:
+    """
+    Evaluates a single centripetal Catmull-Rom segment between p1 and p2.
+    alpha=0.5 (centripetal) prevents cusps and overshoot on sharp turns.
+    """
+    if num_points <= 1:
+        return [p1]
+
+    def tj(ti: float, pi: tuple[float, float], pj: tuple[float, float]) -> float:
+        dist = math.hypot(pj[0] - pi[0], pj[1] - pi[1])
+        return ti + (dist ** alpha) if dist > 0 else ti + 1e-6
+
+    t0 = 0.0
+    t1 = tj(t0, p0, p1)
+    t2 = tj(t1, p1, p2)
+    t3 = tj(t2, p2, p3)
+
+    segment_points = []
+    # Avoid division by zero if control points are overlapping
+    if abs(t2 - t1) < 1e-6:
+        return [p1] * num_points
+
+    for i in range(num_points):
+        # Linearly space t between t1 and t2
+        t = t1 + (t2 - t1) * (i / (num_points - 1))
+        
+        # De Casteljau-like evaluation for Catmull-Rom
+        a1_x = ((t1 - t) * p0[0] + (t - t0) * p1[0]) / (t1 - t0)
+        a1_y = ((t1 - t) * p0[1] + (t - t0) * p1[1]) / (t1 - t0)
+        a2_x = ((t2 - t) * p1[0] + (t - t1) * p2[0]) / (t2 - t1)
+        a2_y = ((t2 - t) * p1[1] + (t - t1) * p2[1]) / (t2 - t1)
+        a3_x = ((t3 - t) * p2[0] + (t - t2) * p3[0]) / (t3 - t2)
+        a3_y = ((t3 - t) * p2[1] + (t - t2) * p3[1]) / (t3 - t2)
+
+        b1_x = ((t2 - t) * a1_x + (t - t0) * a2_x) / (t2 - t0)
+        b1_y = ((t2 - t) * a1_y + (t - t0) * a2_y) / (t2 - t0)
+        b2_x = ((t3 - t) * a2_x + (t - t1) * a3_x) / (t3 - t1)
+        b2_y = ((t3 - t) * a2_y + (t - t1) * a3_y) / (t3 - t1)
+
+        c_x = ((t2 - t) * b1_x + (t - t1) * b2_x) / (t2 - t1)
+        c_y = ((t2 - t) * b1_y + (t - t1) * b2_y) / (t2 - t1)
+
+        segment_points.append((c_x, c_y))
+        
+    return segment_points
+
+def get_segmented_path_points(control_points: list[tuple[float, float]], weight: float) -> list[tuple[float, float]]:
+    """
+    Constructs a continuous piece-wise spline across all control points.
+    Extrapolates virtual endpoints to ensure the curve starts at index 0 and ends at index -1.
+    """
+    N_POINTS = 64
+    SAMPLE_SPACING = 0.01
+
+    n = len(control_points)
+    if n < 2:
+        return control_points
+    
+    # If only 2 points, a straight line is the only deterministic path
+    if n == 2:
+        return [
+            (control_points[0][0] + (control_points[1][0] - control_points[0][0]) * (i / (N_POINTS - 1)),
+             control_points[0][1] + (control_points[1][1] - control_points[0][1]) * (i / (N_POINTS - 1)))
+            for i in range(N_POINTS)
+        ]
+
+    # Synthesize bounding points to clamp the boundary tangents cleanly
+    p_start = (2 * control_points[0][0] - control_points[1][0], 2 * control_points[0][1] - control_points[1][1])
+    p_end = (2 * control_points[-1][0] - control_points[-2][0], 2 * control_points[-1][1] - control_points[-2][1])
+    
+    extended_pts = [p_start] + control_points + [p_end]
+    spline_points = []
+
+    # Evaluate each localized interval independently
+    for i in range(1, len(extended_pts) - 2):
+        segment = evaluate_catmull_rom_segment(
+            extended_pts[i-1], 
+            extended_pts[i], 
+            extended_pts[i+1], 
+            extended_pts[i+2], 
+            num_points=N_POINTS,
+            alpha=weight
+        )
+        # Drop the last point of the segment to prevent duplicate points where segments stitch together
+        if i < len(extended_pts) - 3:
+            spline_points.extend(segment[:-1])
+        else:
+            spline_points.extend(segment)
+
+    return resample_by_arc_length(spline_points, sample_spacing=SAMPLE_SPACING)

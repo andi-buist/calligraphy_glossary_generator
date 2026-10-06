@@ -12,9 +12,9 @@ from bidict import bidict
 
 from src.symbols.characters.base import CHARACTER_TYPES, Character
 from src.symbols.brushstrokes import CurveProfile, BrushStroke, StrokeCollection
+from src.dictionary.data import import_glossary_json, export_glossary_json
 
 TREEVIEW_ICONS_FP="src/app/icons"
-GLOSSARY_JSON_FP="src/dictionary/data/glossary.json"
 
 class CharacterEditorSession:
     GRID_BREAKS = 15
@@ -41,7 +41,7 @@ class CharacterEditorSession:
 
         self.character_hash: str=""
         self.character_stroke_control_points: list[list[tuple[int,int]]]=[]
-        self.character_stroke_weight_vars: list[tk.IntVar]=[]
+        self.character_stroke_weight_vars: list[tk.StringVar]=[]
         self.character_stroke_profile_control_points: list[list[tuple[float,float]]]=[]
         self.character_stroke_profile_bounds_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
 
@@ -65,71 +65,13 @@ class CharacterEditorSession:
             self.on_change(change)
 
     def import_glossary_json(self):
-        def unnest_parented_strokes(strokes: list[ list[list[float,float]] | list[list[list[float,float]]] ]):
-            flat_strokes: list[list[tuple[float,float]]]=[]
-            stroke_parentage: dict[int,list[int]]={}
-
-            for stroke in strokes:
-                if not isinstance(stroke[0][0], float):
-                    parent_idx=None
-                    for subidx, substroke in enumerate(stroke):
-                        stroke_idx=len(flat_strokes)
-                        if subidx == 0:
-                            parent_idx=stroke_idx
-                            stroke_parentage[parent_idx] = []
-                        else:
-                            stroke_parentage[parent_idx].append(stroke_idx)
-                        
-                        flat_strokes.append(substroke)
-                else:
-                    flat_strokes.append(stroke)
-
-            return flat_strokes, stroke_parentage
-        
-        with open(GLOSSARY_JSON_FP, "r") as file:
-            source_dict: dict[str, dict]=json.load(file)
-
-        for hash, data in source_dict.items():
-            flat_strokes, stroke_parentage = unnest_parented_strokes(data.get("stroke_control_points"))
-
-            self.character_glossary_data[hash]=data.copy()
-            self.character_glossary_data[hash]["stroke_control_points"]=flat_strokes
-            self.character_glossary_stroke_parentage_data[hash]=stroke_parentage
-
-    def export_file_beautiful(self, data: dict, fp: str):
-        with open(fp, "w") as file:
-            options = jsbeautifier.default_options()
-            options.indent_size = 2
-
-            file.write(jsbeautifier.beautify(json.dumps(data), options))
+        glossary_data, glossary_parentage_data = import_glossary_json()
+        self.character_glossary_data=glossary_data
+        self.character_glossary_stroke_parentage_data=glossary_parentage_data
 
     def export_glossary_json(self):
-        def reparent_flattened_strokes():
-            output_dict=copy.deepcopy(self.character_glossary_data)          
-
-            for hash, parentage_data in self.character_glossary_stroke_parentage_data.items():
-                character_with_parentage: dict=output_dict[hash]
-
-                all_parents = parentage_data.keys()
-                all_children = [l1 for l0 in parentage_data.values() for l1 in l0]
-
-                reparented_stroke_control_points=[]
-                for idx, stroke in enumerate(character_with_parentage.get("stroke_control_points")):
-                    if idx in all_parents:
-                        #is a parent
-                        sublist = [stroke, *[character_with_parentage.get("stroke_control_points")[cidx] for cidx in parentage_data[idx]]]
-                        reparented_stroke_control_points.append(sublist)
-                    elif idx not in all_children:
-                        #is not a child
-                        reparented_stroke_control_points.append(stroke)
-
-                character_with_parentage["stroke_control_points"]=reparented_stroke_control_points
-            
-            return output_dict
-
         self.commit_active_character_to_memory()
-        data=reparent_flattened_strokes()
-        self.export_file_beautiful(data, GLOSSARY_JSON_FP)
+        export_glossary_json(self.character_glossary_data, self.character_glossary_stroke_parentage_data)
 
     def select_stroke(self, idx: int):
         """
@@ -160,7 +102,7 @@ class CharacterEditorSession:
     def add_new_stroke_items(self):
         self.character_stroke_control_points.append([])
         self.active_stroke_source_control_points.append(None)
-        self.character_stroke_weight_vars.append(tk.IntVar(self.master, 1))
+        self.character_stroke_weight_vars.append(tk.StringVar(self.master, 1.0))
         self.character_stroke_profile_control_points.append(CurveProfile.REALISTIC.copy().control_points)
         self.character_stroke_profile_bounds_vars.append((
             tk.StringVar(self.master, CurveProfile.REALISTIC.bounds[0]),
@@ -191,7 +133,7 @@ class CharacterEditorSession:
                 if len(control_points) > 1:
                     scaled_control_points=self._get_normalized_stroke_control_points(idx)
                     strokes.append(BrushStroke(control_points=scaled_control_points,
-                                                weight=self.character_stroke_weight_vars[idx].get(),
+                                                weight=float(self.character_stroke_weight_vars[idx].get()),
                                                 profile=CurveProfile(control_points=self.character_stroke_profile_control_points[idx],
                                                                     bounds=tuple(float(var.get()) for var in self.character_stroke_profile_bounds_vars[idx]))))
 
@@ -243,7 +185,7 @@ class CharacterEditorSession:
         self.current_stroke_idx=0
         self.character_stroke_control_points=decomposed_strokes
         self.active_stroke_source_control_points=decomposed_source_control_points
-        self.character_stroke_weight_vars=[tk.IntVar(self.master, value) for value in decomposed_stroke_weights]
+        self.character_stroke_weight_vars=[tk.StringVar(self.master, value) for value in decomposed_stroke_weights]
         self.character_stroke_profile_control_points=decomposed_curve_profile_control_points
         self.character_stroke_profile_bounds_vars=[
             (tk.StringVar(self.master, l), tk.StringVar(self.master, r))
@@ -315,7 +257,7 @@ class CharacterEditorSession:
                 continue
 
             active_strokes.append(self._get_normalized_stroke_control_points(idx))
-            active_stroke_weights.append(self.character_stroke_weight_vars[idx].get())
+            active_stroke_weights.append(float(self.character_stroke_weight_vars[idx].get()))
             character_stroke_profile_control_points.append(
                 self.character_stroke_profile_control_points[idx]
             )
@@ -868,8 +810,8 @@ class StrokeEditor(tk.Frame):
         active_idx = self.session.current_stroke_idx
         has_active_stroke = active_idx < len(self.session.character_stroke_control_points)
         active_weight = (
-            self.session.character_stroke_weight_vars[active_idx].get()
-            if has_active_stroke else 1
+            float(self.session.character_stroke_weight_vars[active_idx].get())
+            if has_active_stroke else 1.0
         )
         options = tk.Frame(self, pady=4)
         options.columnconfigure(0, weight=1)
@@ -894,8 +836,9 @@ class StrokeEditor(tk.Frame):
             weight_slider=ttk.Scale(
                 options,
                 variable=self.session.character_stroke_weight_vars[active_idx],
-                from_=1,
-                to=16,
+                from_=0.1,
+                to=4.0,
+                command=self.scale_changed
             )
             weight_slider.bind("<ButtonRelease-1>", lambda *_: self.session.stroke_changed())
             weight_slider.grid(column=1, row=1, columnspan=2)
@@ -977,6 +920,8 @@ class StrokeEditor(tk.Frame):
 
         self.session.stroke_changed()
 
+    def scale_changed(self, event: tk.Event):
+        self.session.character_stroke_weight_vars[self.session.current_stroke_idx].set(round(float(event),1))
 
     def leftclick_x_y(self, event: tk.Event):
         """

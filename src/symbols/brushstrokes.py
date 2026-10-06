@@ -5,7 +5,7 @@ from typing import Literal
 import math
 import numpy as np
 
-from src.symbols.utils import bezier 
+from src.symbols.utils import splines 
 
 GLYPH_SIZE = 128
 STROKE_THICKNESS = 4.0
@@ -31,7 +31,7 @@ class CurveProfile():
                             bounds=self.bounds)
 
     def get_profile(self) -> list[tuple[float,float]]:
-        tmp_profile = bezier.get_bezier_path_points(self.control_points)
+        tmp_profile = splines.get_bezier_path_points(self.control_points)
         _, y = list(map(list, zip(*tmp_profile)))
         ymin, ymax = (min(y), max(y))
         tmp_profile = [(x, ((y - ymin)/(ymax - ymin))) for x,y in tmp_profile]
@@ -102,7 +102,7 @@ class BrushStroke():
     """
     def __init__(self,
                  control_points: list[tuple[float, float]],
-                 weight: int = 1,
+                 weight: float = 1.0,
                  profile: CurveProfile | None = None):
         if any(not 0.0 <= value <= 1.0 for point in control_points for value in point):
             raise ValueError('Brush stroke coordinates must be between 0.0 and 1.0')
@@ -113,15 +113,15 @@ class BrushStroke():
             control_points=CurveProfile.REALISTIC.control_points.copy(),
             bounds=CurveProfile.REALISTIC.bounds,
         )
-        self.bezier_path_points = bezier.get_bezier_path_points(control_points, weight)
+        self.spline_path_points = splines.get_bezier_path_points(control_points, max(1, int(weight)))
         self.bbox = self._get_bbox()
 
     def _get_bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        coord_nparray = np.asarray(self.bezier_path_points)
+        coord_nparray = np.asarray(self.spline_path_points)
         return ((coord_nparray[:, 0].min(),coord_nparray[:, 1].min()),(coord_nparray[:, 0].max(),coord_nparray[:, 1].max()))
 
     def scale(self, dir: Literal["l","r","u","d"], scale: float) -> list[tuple[float,float]]:
-        bpp = self.bezier_path_points
+        bpp = self.spline_path_points
         for idx, coord in enumerate(bpp):
             match dir:
                 case "l":
@@ -142,7 +142,7 @@ class BrushStroke():
         canvas_margin = tuple(x * GLYPH_MARGIN for x in active_canvas.size)
 
         scaled_path_points = []
-        for x in self.bezier_path_points:
+        for x in self.spline_path_points:
             _pos = tuple(canvas_margin[n] + x[n] * canvas_area[n] for n in [0, 1])
             scaled_path_points.append(_pos)
 
