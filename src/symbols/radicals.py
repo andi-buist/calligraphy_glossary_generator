@@ -1,9 +1,9 @@
 from PIL import Image
 import numpy as np
-from src.symbols import brushstrokes
+from src.symbols import strokes
 from src.symbols.characters.base import Character
 
-GLYPH_SIZE = brushstrokes.GLYPH_SIZE
+GLYPH_SIZE = strokes.GLYPH_SIZE
 
 def get_largest_rectangular_area(glyph: Image.Image) -> tuple[tuple[tuple[int,int],tuple[int,int]], float]:
     grayscale = np.asarray(glyph.convert("L"), dtype=float)
@@ -77,16 +77,16 @@ def rect_edge_patch_scaling(character: Character) -> Character:
     l_patch, r_patch, u_patch, d_patch = rect_edge_patches(scaled_character.glyph)
 
     def scale_tree(node, inherited_scales=(), include_own_scales=True):
-        if isinstance(node, brushstrokes.BrushStrokeGroup):
+        if isinstance(node, strokes.BrushStrokeGroup):
             parent_scales = scale_tree(node[0], inherited_scales, include_own_scales)
             child_includes_own_scales = node.scale_method == "combine"
             for child in node[1:]:
                 scale_tree(child, parent_scales, child_includes_own_scales)
             return parent_scales
-        if not isinstance(node, brushstrokes.BrushStroke):
+        if not isinstance(node, strokes.BrushStroke):
             raise TypeError("Stroke trees may contain only BrushStroke or BrushStrokeGroup objects")
 
-        canvas_bbox = tuple(brushstrokes.map_unit_coords_to_margined_canvas(corner) for corner in node.bbox)
+        canvas_bbox = tuple(strokes.map_unit_coords_to_margined_canvas(corner) for corner in node.bbox)
         own_scales = []
         if include_own_scales:
             if rect_in_rect(canvas_bbox, l_patch):
@@ -104,7 +104,7 @@ def rect_edge_patch_scaling(character: Character) -> Character:
             node.scale(direction, 0.5)
         return scales
 
-    if isinstance(scaled_character.strokes, brushstrokes.BrushStrokeGroup):
+    if isinstance(scaled_character.strokes, strokes.BrushStrokeGroup):
         scale_tree(scaled_character.strokes)
     else:
         for component in scaled_character.strokes:

@@ -1,7 +1,7 @@
-from src.symbols import brushstrokes
+from src.symbols import strokes
 from src.symbols.characters.base import Character, CHARACTER_TYPES
 
-GLYPH_SIZE = brushstrokes.GLYPH_SIZE
+GLYPH_SIZE = strokes.GLYPH_SIZE
 
 
 class CompoundCharacter(Character):
