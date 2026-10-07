@@ -13,7 +13,7 @@ GLYPH_MARGIN = 0.1
 
 def add_thickness_profile_constants(cls):
     cls.LINEAR = cls(control_points=[(0.0,0.0),(1.0,1.0)], bounds=(0.0,1.0))
-    cls.REALISTIC = cls(control_points=[(0.0,0.0),(0.35,0.05),(0.6,1.0),(0.95,0.7),(1.0,0.5)], bounds=(1.0,4.0))
+    cls.REALISTIC = cls(control_points=[(0.0, 1.0),(0.125, 0.0),(0.4375, 0.625),(0.725, 1.0),(0.95, 0.625),(1.0, 0.0)], bounds=(1.0,4.0))
     return cls
 
 @add_thickness_profile_constants
@@ -31,7 +31,7 @@ class CurveProfile():
                             bounds=self.bounds)
 
     def get_profile(self) -> list[tuple[float,float]]:
-        tmp_profile = splines.get_bezier_path_points(self.control_points)
+        tmp_profile = splines.get_spline_path_points(self.control_points)
         _, y = list(map(list, zip(*tmp_profile)))
         ymin, ymax = (min(y), max(y))
         tmp_profile = [(x, ((y - ymin)/(ymax - ymin))) for x,y in tmp_profile]
@@ -72,48 +72,46 @@ def add_brushstroke_constants(cls):
     cls.RIGHT = cls(control_points=[(1.0, 0.0), (1.0, 1.0)])
 
     # common basic shaped strokes
-    cls.LEG_LEFT = cls(control_points=[(0.1, 0.0), (0.1, 0.7), (0.0, 1.0)], weight = 2)
+    cls.LEG_LEFT = cls(control_points=[(0.1, 0.0), (0.1, 0.7), (0.0, 1.0)])
     cls.LEG_CENTRE = cls(control_points=[(0.5,0.0),(0.5,0.7),(0.6,1.0)])
     cls.RISER_TOP_CENTRE = cls(control_points=[(0.7,0.0),(0.3,0.1)])
     cls.RISER_CENTRE_CENTRE = cls(control_points=[(0.7,0.5),(0.3,0.6)])
     cls.LOOP_RIGHT = cls(control_points=[(0.7,0.0),(0.7,1.0),(0.2,1.0),(0.2,0.5),(1.0,0.3)])
     cls.LEG_SHORT_CENTRE = cls(control_points=[(0.5,0.6),(0.5,1.0)])
-    cls.CURVE_LEFT = cls(control_points=[(0.4,0.0),(1.0,0.0),(1.0,0.5),(1.0,0.8),(0.2,0.9)], weight = 1)
+    cls.CURVE_LEFT = cls(control_points=[(0.4,0.0),(1.0,0.0),(1.0,0.5),(1.0,0.8),(0.2,0.9)])
     cls.DESCENDER_TOP_CENTRELEFT = cls(control_points=[(0.55,0.2),(0.45,0.3)])
     cls.DESCENDER_CENTRE_CENTRELEFT = cls(control_points=[(0.55,0.4),(0.45,0.5)])
     cls.DESCENDER_BOTTOM_CENTRERIGHT = cls(control_points=[(0.7,0.7),(0.75,0.9)])
     cls.DESCENDER_TOP_CENTRE = cls(control_points=[(0.75,0.175),(0.9,0.225)])
-    cls.HOOK_LEFT = cls(control_points=[(0.7,0.0),(0.7,0.8),(0.2,1.0)], weight = 2)
-    cls.CURLYCUE_LEFT = cls(control_points=[(1.0,0.0),(0.2,0.2),(0.2,0.2),(1.0,0.2),(1.0,0.6),(1.0,1.0),(0.5,1.0),(0.0,1.0),(0.2,0.4)], weight = 2)
+    cls.HOOK_LEFT = cls(control_points=[(0.7,0.0),(0.7,0.8),(0.2,1.0)])
+    cls.CURLYCUE_LEFT = cls(control_points=[(1.0,0.0),(0.2,0.2),(0.2,0.2),(1.0,0.2),(1.0,0.6),(1.0,1.0),(0.5,1.0),(0.0,1.0),(0.2,0.4)])
     cls.ZIGZAG = cls(control_points=[(0.0,0.3),(0.5,0.3),(1.0,0.25),(1.0,0.25),(0.5,0.5),(0.0,0.7),(0.0,0.7),(0.5,0.7),(1.0,0.8)])
     cls.SEVEN = cls(control_points=[(0.3,0.2),(0.3,0.0),(0.3,0.0),(0.7,0.0),(0.7,0.0),(0.7,0.7),(0.8,1.0)])
-    cls.ARC_RIGHT = cls(control_points=[(0.5,0.0),(0.0,0.2),(0.0,0.3),(0.0,0.5),(0.5,0.5),(1.0,0.5)], weight = 2)
-    cls.V_DOWN = cls(control_points=[(0.0,0.0),(0.5,1.0),(1.0,0.0)], weight = 8)
-    cls.V_UP = cls(control_points=[(0.0,1.0),(0.5,0.0),(1.0,1.0)], weight = 8)
+    cls.ARC_RIGHT = cls(control_points=[(0.5,0.0),(0.0,0.2),(0.0,0.3),(0.0,0.5),(0.5,0.5),(1.0,0.5)])
+    cls.V_DOWN = cls(control_points=[(0.0,0.0),(0.5,1.0),(1.0,0.0)])
+    cls.V_UP = cls(control_points=[(0.0,1.0),(0.5,0.0),(1.0,1.0)])
 
     return cls
 
 @add_brushstroke_constants 
 class BrushStroke():
     """
-    Defines a single brushstroke from a set of Bezier control points, weighting,
+    Defines a single brushstroke from a set of Bezier control points,
     and a profile curve (`CurveProfile`) to use to alter the thickness along 
     the stroke length
     """
     def __init__(self,
                  control_points: list[tuple[float, float]],
-                 weight: float = 1.0,
                  profile: CurveProfile | None = None):
         if any(not 0.0 <= value <= 1.0 for point in control_points for value in point):
             raise ValueError('Brush stroke coordinates must be between 0.0 and 1.0')
 
         self.control_points = control_points
-        self.weight = weight
         self.profile = profile if profile is not None else CurveProfile(
             control_points=CurveProfile.REALISTIC.control_points.copy(),
             bounds=CurveProfile.REALISTIC.bounds,
         )
-        self.spline_path_points = splines.get_bezier_path_points(control_points, max(1, int(weight)))
+        self.spline_path_points = splines.get_spline_path_points(control_points)
         self.bbox = self._get_bbox()
 
     def _get_bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:

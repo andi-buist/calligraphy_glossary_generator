@@ -41,7 +41,6 @@ class CharacterEditorSession:
 
         self.character_hash: str=""
         self.character_stroke_control_points: list[list[tuple[int,int]]]=[]
-        self.character_stroke_weight_vars: list[tk.StringVar]=[]
         self.character_stroke_profile_control_points: list[list[tuple[float,float]]]=[]
         self.character_stroke_profile_bounds_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
 
@@ -102,7 +101,6 @@ class CharacterEditorSession:
     def add_new_stroke_items(self):
         self.character_stroke_control_points.append([])
         self.active_stroke_source_control_points.append(None)
-        self.character_stroke_weight_vars.append(tk.StringVar(self.master, 1.0))
         self.character_stroke_profile_control_points.append(CurveProfile.REALISTIC.copy().control_points)
         self.character_stroke_profile_bounds_vars.append((
             tk.StringVar(self.master, CurveProfile.REALISTIC.bounds[0]),
@@ -133,7 +131,6 @@ class CharacterEditorSession:
                 if len(control_points) > 1:
                     scaled_control_points=self._get_normalized_stroke_control_points(idx)
                     strokes.append(BrushStroke(control_points=scaled_control_points,
-                                                weight=float(self.character_stroke_weight_vars[idx].get()),
                                                 profile=CurveProfile(control_points=self.character_stroke_profile_control_points[idx],
                                                                     bounds=tuple(float(var.get()) for var in self.character_stroke_profile_bounds_vars[idx]))))
 
@@ -171,21 +168,18 @@ class CharacterEditorSession:
         """
         decomposed_strokes: list[list[tuple[int,int]]]=[]
         decomposed_source_control_points: list[list[tuple[float,float]]]=[]
-        decomposed_stroke_weights: list[int]=[]
         decomposed_curve_profile_control_points: list[list[tuple[float,float]]]=[]
         decomposed_curve_profile_bounds: list[tuple[float,float]]=[]
         for stroke in character.strokes:
             grid_scaled_coord_path=[(int(x * (self.GRID_BREAKS - 1)), int(y * (self.GRID_BREAKS - 1))) for x,y in stroke.control_points]
             decomposed_strokes.append(grid_scaled_coord_path)
             decomposed_source_control_points.append(list(stroke.control_points))
-            decomposed_stroke_weights.append(stroke.weight)
             decomposed_curve_profile_control_points.append(stroke.profile.control_points.copy())
             decomposed_curve_profile_bounds.append(stroke.profile.bounds)
 
         self.current_stroke_idx=0
         self.character_stroke_control_points=decomposed_strokes
         self.active_stroke_source_control_points=decomposed_source_control_points
-        self.character_stroke_weight_vars=[tk.StringVar(self.master, value) for value in decomposed_stroke_weights]
         self.character_stroke_profile_control_points=decomposed_curve_profile_control_points
         self.character_stroke_profile_bounds_vars=[
             (tk.StringVar(self.master, l), tk.StringVar(self.master, r))
@@ -206,7 +200,6 @@ class CharacterEditorSession:
         Converts a glossary json item into a `Character`.
         """
         source_strokes: list[list[list]]=item.get("stroke_control_points")
-        source_stroke_weights: list[int]=item.get("stroke_weights")
         source_profile_control_points=item.get("stroke_profile_control_points")
         source_profile_bounds=item.get("stroke_profile_bounds")
         if (source_profile_control_points is None) != (source_profile_bounds is None):
@@ -225,7 +218,7 @@ class CharacterEditorSession:
                     control_points=[tuple(point) for point in source_profile_control_points[idx]],
                     bounds=tuple(source_profile_bounds[idx]),
                 )
-            strokes.append(BrushStroke(stroke_coords, source_stroke_weights[idx], profile))
+            strokes.append(BrushStroke(stroke_coords, profile))
 
         return Character(item.get("character_type"),
                             item.get("definition"),
@@ -249,7 +242,6 @@ class CharacterEditorSession:
         item["definition"] = [var.get() for var in self.character_defs_vars]
 
         active_strokes = []
-        active_stroke_weights = []
         character_stroke_profile_control_points = []
         active_stroke_profile_bounds = []
         for idx, path in enumerate(self.character_stroke_control_points):
@@ -257,7 +249,6 @@ class CharacterEditorSession:
                 continue
 
             active_strokes.append(self._get_normalized_stroke_control_points(idx))
-            active_stroke_weights.append(float(self.character_stroke_weight_vars[idx].get()))
             character_stroke_profile_control_points.append(
                 self.character_stroke_profile_control_points[idx]
             )
@@ -267,7 +258,6 @@ class CharacterEditorSession:
             )
 
         item["stroke_control_points"] = active_strokes
-        item["stroke_weights"] = active_stroke_weights
         item["stroke_profile_control_points"] = character_stroke_profile_control_points
         item["stroke_profile_bounds"] = active_stroke_profile_bounds
 
@@ -461,8 +451,8 @@ class CharacterHierarchy(tk.Frame):
                                 )
             self.character_tree_ids[hash]=tree_id
 
-        if self.session.character_hash in self.character_tree_ids:
-            tv.see(item=self.character_tree_ids[self.session.character_hash])
+        if self.session.character_hash in self.character_tree_ids.keys():
+            tv.see(item=self.character_tree_ids.get(self.session.character_hash))
 
     def update_active_entry(self):
         self.session.commit_active_character_to_memory()
@@ -491,7 +481,7 @@ class CharacterHierarchy(tk.Frame):
         item=tv.identify("item", event.x, event.y)
         hash=self.character_tree_ids.inverse.get(item)
         if hash is not None:
-            self.session.select_character(hash)
+            self.session.select_character(hash, save_current=True)
 
     def middleclick_entry(self, event: tk.Event):
         tv: ttk.Treeview=self.dictionary_treeview
@@ -533,7 +523,6 @@ class CharacterHierarchy(tk.Frame):
                 "character_type": focus_character_type,
                 "definition": ["example definition"],
                 "stroke_control_points": [[[0.5, 0.0], [0.5, 1.0]]],
-                "stroke_weights": [1],
                 "stroke_profile_control_points":[CurveProfile.REALISTIC.copy().control_points],
                 "stroke_profile_bounds": [CurveProfile.REALISTIC.copy().bounds]
                 }
@@ -659,12 +648,16 @@ class CurveProfileWidget(tk.Frame):
         self.canvas.bind("<ButtonPress-1>", self.drag_control_point_start)
         self.canvas.bind("<ButtonRelease-1>", self.drag_control_point_end)
         self.canvas.bind("<Double-1>", self.add_control_point)
+        self.canvas.bind("<ButtonPress-2>", self.reset_curve)
         self.canvas.bind("<ButtonPress-3>", self.remove_control_point)
 
         self.refresh()
 
     def refresh(self):
+        self.curve_profile.profile=self.curve_profile.get_profile()
         self.draw_canvas()
+        if self.on_refresh is not None:
+            self.on_refresh()
 
     def scale_to_padded_canvas(self, coord: tuple[float,float]) -> tuple[int,int]:
         rawx, rawy = coord
@@ -741,10 +734,7 @@ class CurveProfileWidget(tk.Frame):
             else:
                 self.curve_profile.control_points[self.selected_curve_control_point_idx] = (x,y)
 
-            self.curve_profile.profile=self.curve_profile.get_profile()
             self.refresh()
-            if self.on_refresh is not None:
-                self.on_refresh()
 
     def add_control_point(self, event: tk.Event):
         """
@@ -756,10 +746,7 @@ class CurveProfileWidget(tk.Frame):
         self.curve_profile.control_points.insert(-1, (x,y))
         self.selected_curve_control_point_idx = None
 
-        self.curve_profile.profile=self.curve_profile.get_profile()
         self.refresh()
-        if self.on_refresh is not None:
-            self.on_refresh()
 
     def remove_control_point(self, event: tk.Event):
         """
@@ -774,10 +761,11 @@ class CurveProfileWidget(tk.Frame):
                 _ = self.curve_profile.control_points.pop(self.selected_curve_control_point_idx)
                 self.selected_curve_control_point_idx = None
 
-                self.curve_profile.profile=self.curve_profile.get_profile()
                 self.refresh()
-                if self.on_refresh is not None:
-                    self.on_refresh()
+
+    def reset_curve(self, event: tk.Event):
+        self.curve_profile.control_points[:]=CurveProfile.REALISTIC.copy().control_points
+        self.refresh()
 
 class StrokeEditor(tk.Frame):
     def __init__(self, parent, session: CharacterEditorSession):
@@ -809,10 +797,7 @@ class StrokeEditor(tk.Frame):
 
         active_idx = self.session.current_stroke_idx
         has_active_stroke = active_idx < len(self.session.character_stroke_control_points)
-        active_weight = (
-            float(self.session.character_stroke_weight_vars[active_idx].get())
-            if has_active_stroke else 1.0
-        )
+
         options = tk.Frame(self, pady=4)
         options.columnconfigure(0, weight=1)
         options.columnconfigure(1, weight=3)
@@ -829,20 +814,10 @@ class StrokeEditor(tk.Frame):
         tk.Label(
             options,
             text=f"Character {self.session.character_hash} | "
-                 f"Brushstroke {active_idx} | Weight={active_weight}",
+                 f"Brushstroke {active_idx}",
         ).grid(column=1, row=0, columnspan=2)
 
         if self.session.show_stroke_options_var.get() and has_active_stroke:
-            weight_slider=ttk.Scale(
-                options,
-                variable=self.session.character_stroke_weight_vars[active_idx],
-                from_=0.1,
-                to=4.0,
-                command=self.scale_changed
-            )
-            weight_slider.bind("<ButtonRelease-1>", lambda *_: self.session.stroke_changed())
-            weight_slider.grid(column=1, row=1, columnspan=2)
-
             curve_profile=CurveProfile(
                 control_points=self.session.character_stroke_profile_control_points[active_idx],
                 bounds=tuple(
@@ -890,7 +865,6 @@ class StrokeEditor(tk.Frame):
                 # Remove the empty/invalid stroke data across all parallel lists
                 self.session.character_stroke_control_points.pop(idx)
                 self.session.active_stroke_source_control_points.pop(idx)
-                self.session.character_stroke_weight_vars.pop(idx)
                 self.session.character_stroke_profile_control_points.pop(idx)
                 self.session.character_stroke_profile_bounds_vars.pop(idx)
 
@@ -919,9 +893,6 @@ class StrokeEditor(tk.Frame):
         self.remove_empty_strokes()
 
         self.session.stroke_changed()
-
-    def scale_changed(self, event: tk.Event):
-        self.session.character_stroke_weight_vars[self.session.current_stroke_idx].set(round(float(event),1))
 
     def leftclick_x_y(self, event: tk.Event):
         """
