@@ -6,7 +6,7 @@ import numpy as np
 from src.symbols import brushstrokes
 
 GLYPH_SIZE = brushstrokes.GLYPH_SIZE
-CHARACTER_TYPES = Literal["noun", "verb", "adjective", "adverb", "pronoun", "preposition", "conjunction", "number", "letter"]
+CHARACTER_TYPES = Literal["noun", "verb", "adjective", "adverb", "pronoun", "preposition", "conjunction", "number", "letter", "symbol"]
 
 class Character:
     def __init__(self,
