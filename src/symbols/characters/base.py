@@ -5,23 +5,31 @@ import numpy as np
 
 from src.symbols.strokes import BrushStroke, BrushStrokeGroup, StrokeCollection, flatten_nested_brushstrokes, GLYPH_SIZE
 
-CHARACTER_TYPES = Literal["noun", "verb", "adjective", "adverb", "pronoun", "preposition", "conjunction", "number", "letter", "symbol"]
+CHARACTER_TYPES = Literal["noun", 
+                          "verb", 
+                          "adjective", 
+                          "adverb", 
+                          "pronoun", 
+                          "preposition", 
+                          "determiner", 
+                          "interrogative", 
+                          "conjunction", 
+                          "number", 
+                          "letter", 
+                          "symbol"]
 
 class Character:
     def __init__(self,
-                 character_type: CHARACTER_TYPES,
-                 definition: any,
+                 definition: list[tuple[CHARACTER_TYPES, str]],
                  strokes: StrokeCollection):
         self.strokes = [strokes] if isinstance(strokes, BrushStroke) else strokes
         self.glyph = self.generate_glyph()
         self.glyph_orientation: Literal["horizontal", "vertical"] = self._get_glyph_orientation()
-        self.character_type = character_type
         self.definition = definition
 
     def clone(self):
         clone = type(self).__new__(type(self))
-        clone.character_type = self.character_type
-        clone.definition = self.definition
+        clone.definition = copy.deepcopy(self.definition)
         clone.strokes = copy.deepcopy(self.strokes)
         clone.glyph = clone.generate_glyph()
         clone.glyph_orientation = clone._get_glyph_orientation()

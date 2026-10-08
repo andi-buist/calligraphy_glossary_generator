@@ -1,7 +1,7 @@
 import os
 import copy
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 from PIL import Image, ImageTk
 import typing
 import secrets
@@ -155,8 +155,10 @@ class CharacterHierarchy(tk.Frame):
     def __init__(self, parent, session: CharacterEditorSession):
         self.session: CharacterEditorSession=session
         self.treeview_icons: dict[str, ImageTk.PhotoImage]=build_treeview_icons(self)
-        
-        self.character_tree_ids: bidict[str, str]=bidict({}) # bidict so we can lookup {hash <-> tree_id}
+
+        self.last_tree_id: str=None
+
+        self.tree_id_to_character_hash: dict[str,str]={}
         self.character_type_tree_ids: bidict[str, str]=bidict({}) # bidict so we can lookup {character_type <-> tree_id}
 
         super().__init__(parent)
@@ -167,7 +169,6 @@ class CharacterHierarchy(tk.Frame):
         self.dictionary_treeview.pack(fill="x")
         self.dictionary_treeview.bind("<ButtonPress-1>", self.leftclick_entry)
         self.dictionary_treeview.bind("<ButtonPress-2>", self.middleclick_entry)
-        self.dictionary_treeview.bind("<ButtonPress-3>", self.rightclick_entry)
 
         self.refresh()
 
@@ -179,7 +180,6 @@ class CharacterHierarchy(tk.Frame):
         tv: ttk.Treeview=self.dictionary_treeview
         tv.delete(*tv.get_children())
         self.character_type_tree_ids=bidict({})
-        self.character_tree_ids=bidict({})
 
         tv.heading("#0", text="Character")
         tv.heading("defs", text="Definition(s)")
@@ -200,41 +200,23 @@ class CharacterHierarchy(tk.Frame):
         # 3. add the character items
         for hash, item in self.session.character_glossary_data.items():
             char=self.session.json_to_character(item)
-
             row_tags = ('selected',) if hash == self.session.character_hash else ('unselected',)
-            extra_defs_text = ""
-            if len(char.definition) > 1:
-                extra_defs_text = f" (+{len(char.definition)-1} more...)"
 
-            tree_id=tv.insert(self.character_type_tree_ids[char.character_type],
-                                tk.END,
-                                text=f"{hash}",
-                                values=(f"{char.definition[0]}{extra_defs_text}",),
-                                tags=row_tags
-                                )
-            self.character_tree_ids[hash]=tree_id
+            for char_type, char_def in char.definition:
+                tree_id=tv.insert(self.character_type_tree_ids[char_type],
+                                    tk.END,
+                                    text=f"{hash}",
+                                    values=(f"{char_def}",),
+                                    tags=row_tags
+                                    )
+                self.tree_id_to_character_hash[tree_id]=hash
 
-        if self.session.character_hash in self.character_tree_ids.keys():
-            tv.see(item=self.character_tree_ids.get(self.session.character_hash))
+        if self.last_tree_id:
+            tv.see(item=self.last_tree_id)
 
     def update_active_entry(self):
         self.session.commit_active_character_to_memory()
-        active_hash = self.session.character_hash
-        tree_id = self.character_tree_ids.get(active_hash)
-        if tree_id is None:
-            return
-
-        item = self.session.character_glossary_data[active_hash]
-        group_id = self.character_type_tree_ids.get(item["character_type"])
-        if group_id is not None and self.dictionary_treeview.parent(tree_id) != group_id:
-            self.dictionary_treeview.move(tree_id, group_id, tk.END)
-
-        definitions = item["definition"]
-        extra_defs_text = f" (+{len(definitions) - 1} more...)" if len(definitions) > 1 else ""
-        self.dictionary_treeview.item(
-            tree_id,
-            values=(f"{definitions[0]}{extra_defs_text}",),
-        )
+        self.refresh()
 
     def leftclick_entry(self, event: tk.Event):
         """
@@ -242,33 +224,18 @@ class CharacterHierarchy(tk.Frame):
         """
         tv: ttk.Treeview=self.dictionary_treeview
         item=tv.identify("item", event.x, event.y)
-        hash=self.character_tree_ids.inverse.get(item)
+        hash=self.tree_id_to_character_hash.get(item, None)
         if hash is not None:
             self.session.select_character(hash, save_current=True)
 
     def middleclick_entry(self, event: tk.Event):
         tv: ttk.Treeview=self.dictionary_treeview
         item=tv.identify("item", event.x, event.y)
-        hash=self.character_tree_ids.inverse.get(item, None)
+        hash=self.tree_id_to_character_hash[item]
 
         if hash:
             character_to_clone = copy.deepcopy(self.session.character_glossary_data[hash])
             self.add_entry(character_to_clone)
-
-
-    def rightclick_entry(self, event: tk.Event):
-        tv: ttk.Treeview=self.dictionary_treeview
-        item=tv.identify("item", event.x, event.y)
-        hash=self.character_tree_ids.inverse.get(item, None)
-
-        if hash:
-            answer = messagebox.askyesno("Remove entry",
-                                            f"Remove the glossary entry for {hash}?",
-                                            icon="question",
-                                            parent=self.winfo_toplevel()
-                                            )
-            if answer:
-                self.remove_entry(hash)
 
     # TODO: add and remove need partially bringing out to be session methods
     def add_entry(self, character_template: dict | None = None):
@@ -280,11 +247,10 @@ class CharacterHierarchy(tk.Frame):
             # otherwise, go with the active-character's type
             focus_character_type = self.character_type_tree_ids.inverse.get(tv.focus(), None)
             if focus_character_type is None:
-                    focus_character_type = self.session.character_type_var.get()
+                    focus_character_type = typing.get_args(CHARACTER_TYPES)[0]
 
             character_template: dict={
-                "character_type": focus_character_type,
-                "definition": ["example definition"],
+                "definition": [(focus_character_type,"example definition")],
                 "stroke_control_points": [[[0.5, 0.0], [0.5, 1.0]]],
                 "stroke_profile_control_points":[CurveProfile.REALISTIC.copy().control_points],
                 "stroke_profile_bounds": [CurveProfile.REALISTIC.copy().bounds]
@@ -293,31 +259,4 @@ class CharacterHierarchy(tk.Frame):
         self.session.character_glossary_data[hash]=copy.deepcopy(character_template)
         self.session.character_glossary_stroke_parentage_data[hash]={}
         self.session.select_character(hash, save_current=True)
-        self.session.export_glossary_json()
-
-    def remove_entry(self, hash: str):
-        self.session.commit_active_character_to_memory()
-
-        hashes=list(self.session.character_glossary_data)
-        if len(hashes) <= 1:
-            messagebox.showwarning(
-                "Cannot remove character",
-                "At least one character must remain in the glossary.",
-                parent=self.winfo_toplevel(),
-            )
-            return
-
-        next_active_hash=self.session.character_hash
-        removing_active = hash == self.session.character_hash
-        if removing_active:
-            removed_idx=hashes.index(hash)
-            next_active_hash=hashes[removed_idx - 1] if removed_idx > 0 else hashes[1]
-
-        del self.session.character_glossary_data[hash]
-        del self.session.character_glossary_stroke_parentage_data[hash]
-
-        if removing_active:
-            self.session.select_character(next_active_hash, save_current=False)
-        else:
-            self.session.refresh("list")
         self.session.export_glossary_json()

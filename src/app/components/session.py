@@ -1,5 +1,6 @@
 import os
 import tkinter as tk
+from tkinter import messagebox, ttk
 from PIL import Image, ImageTk
 import typing
 
@@ -29,8 +30,7 @@ class CharacterEditorSession:
         self.character_stroke_profile_control_points: list[list[tuple[float,float]]]=[]
         self.character_stroke_profile_bounds_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
 
-        self.character_type_var=tk.StringVar(master, "")
-        self.character_defs_vars: list[tk.StringVar]=[]
+        self.character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
         self.character_object_cache: tuple[Character, ImageTk.PhotoImage] | None = None # must cache the photoimage too, as otherwise it gets GC'd
 
         self.show_stroke_options_var=tk.BooleanVar(master, False)
@@ -83,6 +83,43 @@ class CharacterEditorSession:
         else:
             raise KeyError(f"{hash} is not a valid character hash.")
 
+    def remove_character(self, hash: str):
+        if hash not in self.character_glossary_data.keys():
+            return
+
+        answer = messagebox.askyesno("Remove entry",
+                                        f"Remove the glossary entry for character {hash}?",
+                                        icon="question",
+                                        parent=self.master.winfo_toplevel()
+                                        )
+        
+        if answer:
+            self.commit_active_character_to_memory()
+            hashes=list(self.character_glossary_data)
+
+            if len(hashes) <= 1:
+                messagebox.showwarning(
+                    "Cannot remove character",
+                    "At least one character must remain in the glossary.",
+                    parent=self.master.winfo_toplevel(),
+                )
+                return
+            
+            next_active_hash=self.character_hash
+            removing_active = hash == self.character_hash
+            if removing_active:
+                removed_idx=hashes.index(hash)
+                next_active_hash=hashes[removed_idx - 1] if removed_idx > 0 else hashes[removed_idx + 1]
+    
+            del self.character_glossary_data[hash]
+            del self.character_glossary_stroke_parentage_data[hash]
+    
+            if removing_active:
+                self.select_character(next_active_hash, save_current=False)
+            else:
+                self.refresh("list")
+            self.export_glossary_json()
+
     def add_new_stroke_items(self):
         self.character_stroke_control_points.append([])
         self.active_stroke_source_control_points.append(None)
@@ -119,9 +156,8 @@ class CharacterEditorSession:
                                                 profile=CurveProfile(control_points=self.character_stroke_profile_control_points[idx],
                                                                     bounds=tuple(float(var.get()) for var in self.character_stroke_profile_bounds_vars[idx]))))
 
-            return Character(character_type=self.character_type_var.get(),
-                                definition=[x.get() for x in self.character_defs_vars],
-                                strokes=strokes)
+            return Character(definition=[(x.get(),y.get()) for x,y in self.character_defs_vars],
+                             strokes=strokes)
 
         if len(self.character_stroke_control_points) > 0:
             sub_lengths_check=[len(el) > 1 for el in self.character_stroke_control_points]
@@ -171,14 +207,9 @@ class CharacterEditorSession:
             for l,r in decomposed_curve_profile_bounds
         ]
 
-        self.character_type_var=tk.StringVar(self.master, character.character_type)
-        self.character_type_var.trace_add("write", self.update_treeview)
-
-        self.character_defs_vars: list[tk.StringVar]=[
-            tk.StringVar(self.master, value) for value in character.definition
+        self.character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[
+            (tk.StringVar(self.master, t), tk.StringVar(self.master, d)) for t,d in character.definition
         ]
-        for definition_var in self.character_defs_vars:
-            definition_var.trace_add("write", self.update_treeview)
 
     def json_to_character(self, item: dict) -> Character:
         """
@@ -205,9 +236,8 @@ class CharacterEditorSession:
                 )
             strokes.append(BrushStroke(stroke_coords, profile))
 
-        return Character(item.get("character_type"),
-                            item.get("definition"),
-                            strokes)
+        return Character(item.get("definition"),
+                         strokes)
 
     def commit_active_character_to_memory(self):
         """
@@ -223,8 +253,7 @@ class CharacterEditorSession:
         item = self.character_glossary_data[self.character_hash]
 
         # for each locally tracked variable, assign to the working glossary
-        item["character_type"] = self.character_type_var.get()
-        item["definition"] = [var.get() for var in self.character_defs_vars]
+        item["definition"] = [(t.get(), d.get()) for t,d in self.character_defs_vars]
 
         active_strokes = []
         character_stroke_profile_control_points = []
