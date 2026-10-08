@@ -14,19 +14,20 @@ def _row_col(n: int):
 
 # can't be statically-typed due to circular imports :/ - list[Character]
 def character_sheet(characters: list[Character]):
-    def _add_character(character: Character, ax: plt.Axes, titles: bool = True):
+    def _add_character(character: Character, ax: plt.Axes, titles: bool = True, show_masks: bool = False):
             glyph_width, glyph_height = character.glyph.size
 
             ax.imshow(character.glyph, extent=(0, glyph_width, glyph_height, 0), alpha = 1)
             # show the masks
-            (rect_area), _ = radicals.get_largest_rectangular_area(character.glyph)
-            if rect_area is not None:
-                rect_w, rect_h = (rect_area[1][0] - rect_area[0][0], rect_area[1][1] - rect_area[0][1])
-                ax.add_patch(Rectangle(rect_area[0], rect_w, rect_h, color = (1,0,0,0.3)))
+            if show_masks:
+                (rect_area), _ = radicals.get_largest_rectangular_area(character.glyph)
+                if rect_area is not None:
+                    rect_w, rect_h = (rect_area[1][0] - rect_area[0][0], rect_area[1][1] - rect_area[0][1])
+                    ax.add_patch(Rectangle(rect_area[0], rect_w, rect_h, color = (1,0,0,0.3)))
 
             if titles:
-                working_def = character.definition[0] if type(character.definition) is list else character.definition
-                title = f"[{character.character_type}: {working_def}]\n{character.glyph_orientation}"
+                working_type, working_def = character.definition[0]
+                title = f"{working_type}:\n'{working_def}'"
                 ax.set_title(textwrap.fill(title, width=title_line_width), {'fontsize': title_fontsize})
             ax.tick_params(which="minor", length=0)
             ax.grid(which="minor", color="black", linestyle=":", linewidth=1, alpha = 0.3)

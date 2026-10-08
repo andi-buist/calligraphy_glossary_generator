@@ -3,7 +3,7 @@ from tkinter import messagebox, ttk
 
 from src.app.components.session import CharacterEditorSession
 from src.app.components.hierarchies import StrokeHierarchy, CharacterHierarchy
-from src.app.components.characters import CharacterType, CharacterDefinitions, CharacterPreview
+from src.app.components.characters import CharacterDefinitions, CharacterPreview
 from src.app.components.strokes import StrokeEditor
 
 class DrawingTool(tk.Frame):
@@ -40,10 +40,8 @@ class DrawingTool(tk.Frame):
 
         ttk.Separator(self.left_pane).pack(fill="x", pady=8)
 
-        self.character_type = CharacterType(self.left_pane, self.session)
-        self.character_type.pack(fill="x")
         self.character_definitions = CharacterDefinitions(self.left_pane, self.session)
-        self.character_definitions.pack(fill="x")
+        self.character_definitions.pack(fill="both", expand=True)
 
         self.stroke_editor = StrokeEditor(self, self.session)
         self.stroke_editor.grid(column=1, row=0, sticky="NSEW", padx=12)
@@ -64,12 +62,9 @@ class DrawingTool(tk.Frame):
         self.character_preview.pack(fill="both", pady=8)
 
     def _rebuild_character_fields(self):
-        self.character_type.destroy()
         self.character_definitions.destroy()
-        self.character_type = CharacterType(self.left_pane, self.session)
-        self.character_type.pack(fill="x")
         self.character_definitions = CharacterDefinitions(self.left_pane, self.session)
-        self.character_definitions.pack(fill="x")
+        self.character_definitions.pack(fill="both", expand=True)
 
     def refresh(self, change: str = "all"):
         if change == "list":
