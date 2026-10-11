@@ -7,12 +7,12 @@ from threading import Thread
 from src.symbols.characters import Character, CHARACTER_TYPES, glyph_similarity
 from src.symbols.strokes import CurveProfile, BrushStroke, StrokeCollection
 from src.symbols.radicals import get_largest_rectangular_area
-from src.app.components.session import CharacterEditorSession
+from src.app.components.session import AppSession
 
 class CharacterDefinitions(tk.Frame):
-    def __init__(self, parent, session: CharacterEditorSession):
+    def __init__(self, parent, session: AppSession):
         super().__init__(parent)
-        self.session: CharacterEditorSession=session
+        self.session: AppSession=session
         self.columnconfigure(0, weight=1)
 
         remove_character_button=tk.Button(self, text="Remove Character", command=lambda hash=self.session.character_hash: self.session.remove_character(hash))
@@ -66,7 +66,7 @@ class CharacterDefinitions(tk.Frame):
         self.refresh()
 
 class CharacterPreview(tk.Frame):
-    def __init__(self, parent, session: CharacterEditorSession):
+    def __init__(self, parent, session: AppSession):
         self.session = session
         
         self.character_object_cache: tuple[Character, ImageTk.PhotoImage] = None # must cache the photoimage too, as otherwise it gets GC'd
@@ -82,19 +82,20 @@ class CharacterPreview(tk.Frame):
 
         self.refresh_active_character_image_cache()
 
-        tk.Label(self, text="Rendered Glyph").grid(column=0, row=0, sticky="NEW")
-        image_label=tk.Label(
-            self,
-            image=self.character_object_cache[1],
-            highlightthickness=1,
-            highlightbackground="black",
-        )
-        image_label.grid(column=0, row=1)
+        if self.character_object_cache is not None:
+            tk.Label(self, text="Rendered Glyph").grid(column=0, row=0, sticky="NEW")
+            image_label=tk.Label(
+                self,
+                image=self.character_object_cache[1],
+                highlightthickness=1,
+                highlightbackground="black",
+            )
+            image_label.grid(column=0, row=1)
 
-        self.similarity_score_label=tk.Label(self, text="")
-        self.similarity_score_label.grid(column=0, row=2)
-        t=Thread(target=self.get_similarity_scores, daemon=True)
-        t.start()
+            self.similarity_score_label=tk.Label(self, text="")
+            self.similarity_score_label.grid(column=0, row=2)
+            t=Thread(target=self.get_similarity_scores, daemon=True)
+            t.start()
 
     def refresh_active_character_image_cache(self):
         """

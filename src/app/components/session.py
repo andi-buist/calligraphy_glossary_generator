@@ -6,7 +6,7 @@ from src.symbols.characters import Character
 from src.symbols.strokes import CurveProfile, BrushStroke, StrokeCollection
 from src.dictionary.data import import_glossary_json, export_glossary_json
 
-class CharacterEditorSession:
+class AppSession:
     GRID_BREAKS = 15
     CELL_SIZE = 36
     CANVAS_SIZE = GRID_BREAKS * CELL_SIZE

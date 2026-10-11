@@ -7,7 +7,7 @@ import typing
 import secrets
 from bidict import bidict
 
-from src.app.components.session import CharacterEditorSession
+from src.app.components.session import AppSession
 from src.symbols.characters import CHARACTER_TYPES
 from src.symbols.strokes import CurveProfile
 
@@ -23,8 +23,8 @@ def build_treeview_icons(parent: tk.Misc):
     return treeview_icons
 
 class StrokeHierarchy(tk.Frame):
-    def __init__(self, parent, session: CharacterEditorSession):
-        self.session: CharacterEditorSession=session
+    def __init__(self, parent, session: AppSession):
+        self.session: AppSession=session
         self.treeview_icons: dict[str, ImageTk.PhotoImage]=build_treeview_icons(self)
 
         self.selected_stroke_idx:int=None
@@ -152,8 +152,8 @@ class StrokeHierarchy(tk.Frame):
         self.refresh()
 
 class CharacterHierarchy(tk.Frame):
-    def __init__(self, parent, session: CharacterEditorSession):
-        self.session: CharacterEditorSession=session
+    def __init__(self, parent, session: AppSession):
+        self.session: AppSession=session
         self.treeview_icons: dict[str, ImageTk.PhotoImage]=build_treeview_icons(self)
 
         self.last_tree_id: str=None

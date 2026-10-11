@@ -13,7 +13,7 @@ GLYPH_MARGIN = 0.1
 
 def add_thickness_profile_constants(cls):
     cls.LINEAR = cls(control_points=[(0.0,0.0),(1.0,1.0)], bounds=(0.0,1.0))
-    cls.REALISTIC = cls(control_points=[(0.0, 1.0),(0.125, 0.0),(0.4375, 0.625),(0.725, 1.0),(0.95, 0.625),(1.0, 0.0)], bounds=(1.0,4.0))
+    cls.REALISTIC = cls(control_points=[(0.0, 1.0),(0.125, 0.0),(0.4375, 0.625),(0.725, 1.0),(0.95, 0.625),(1.0, 0.0)], bounds=(1.0,2.0))
     return cls
 
 @add_thickness_profile_constants

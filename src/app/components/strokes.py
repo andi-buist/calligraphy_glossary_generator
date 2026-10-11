@@ -1,12 +1,12 @@
 import tkinter as tk
 from tkinter import ttk
 
-from src.app.components.session import CharacterEditorSession
+from src.app.components.session import AppSession
 from src.app.components.curves import CurveProfileWidget
 from src.symbols.strokes import CurveProfile
 
 class StrokeEditor(tk.Frame):
-    def __init__(self, parent, session: CharacterEditorSession):
+    def __init__(self, parent, session: AppSession):
         self.session = session
 
         self.CANVAS_SIZE = session.CANVAS_SIZE

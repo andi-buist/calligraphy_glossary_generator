@@ -1,25 +1,19 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from src.app.components.session import CharacterEditorSession
+from src.app.components.session import AppSession
 from src.app.components.hierarchies import StrokeHierarchy, CharacterHierarchy
 from src.app.components.characters import CharacterDefinitions, CharacterPreview
 from src.app.components.strokes import StrokeEditor
 
-class CharacterEditorApp(ttk.Notebook):
+class EditorApp(tk.Frame):
     def __init__(self, parent):
-        self.session = CharacterEditorSession(parent)
+        self.session = AppSession(parent)
 
         super().__init__(parent)
 
-        self.glossary_editor = GlossaryEditor(self, self.session)
+        self.glossary_editor = CharacterEditor(self, self.session)
         self.glossary_editor.pack(fill="both", expand=True)
-
-        self.glossary_viewer = GlossaryViewer(self, self.session)
-        self.glossary_viewer.pack(fill="both", expand=True)
-
-        self.add(self.glossary_editor, text="Glossary Editor")
-        self.add(self.glossary_viewer, text="Glossary Viewer")
 
     def on_app_close(self):
         answer=messagebox.askyesno(
@@ -32,12 +26,12 @@ class CharacterEditorApp(ttk.Notebook):
             self.winfo_toplevel().destroy()
 
 
-class GlossaryEditor(tk.Frame):
-    GRID_BREAKS = CharacterEditorSession.GRID_BREAKS
-    CELL_SIZE = CharacterEditorSession.CELL_SIZE
-    canvas_size = CharacterEditorSession.CANVAS_SIZE
+class CharacterEditor(tk.Frame):
+    GRID_BREAKS = AppSession.GRID_BREAKS
+    CELL_SIZE = AppSession.CELL_SIZE
+    canvas_size = AppSession.CANVAS_SIZE
 
-    def __init__(self, parent: tk.Misc, session: CharacterEditorSession):
+    def __init__(self, parent: tk.Misc, session: AppSession):
         self.session = session
 
         super().__init__(parent, padx=24, pady=24)
@@ -93,34 +87,41 @@ class GlossaryEditor(tk.Frame):
         self.character_definitions.pack(fill="both", expand=True)
 
     def refresh(self, change: str = "all"):
-        if change == "list":
-            self.character_hierarchy.refresh()
-        elif change == "metadata":
-            self.character_hierarchy.update_active_entry()
-        elif change == "preview":
-            self.character_preview.refresh()
-        elif change in ("selection", "stroke", "all"):
-            if change in ("selection", "all"):
-                self._rebuild_character_fields()
+        match change:
+            case "list":
                 self.character_hierarchy.refresh()
-            self.stroke_editor.refresh()
-            self.stroke_hierarchy.refresh()
-            self.character_preview.refresh()
+            case "metadata":
+                self.character_hierarchy.update_active_entry()
+            case "preview":
+                self.character_preview.refresh()
+            case _:
+                if change in ("selection", "all"):
+                    self._rebuild_character_fields()
+                    self.character_hierarchy.refresh()
+                self.stroke_editor.refresh()
+                self.stroke_hierarchy.refresh()
+                self.character_preview.refresh()
 
-class GlossaryViewer(tk.Frame):
-    def __init__(self, parent: tk.Misc, session: CharacterEditorSession):
+class CompoundEditor(tk.Frame):
+    def __init__(self, parent: tk.Misc, session: AppSession):
         self.session = session
         self.refresh_count: int = 0
 
         super().__init__(parent, padx=24, pady=24)
+        self._build_layout()
         self.session.on_change.append(self.refresh)
 
         self.refresh()
 
-    def refresh(self, change: str = "all"):
+    def _build_layout(self):
         for child in self.winfo_children():
             child.destroy()
 
-        tk.Label(self, text=f"{self.refresh_count} refreshes").grid(column=0, row=0, sticky="NEW")
+        self.test_label=tk.Label(self, text="")
+        self.test_label.grid(column=0, row=0, sticky="NEW")
 
-        self.refresh_count+=1
+    def refresh(self, change: str = "all"):
+        match change:
+            case _:
+                self.test_label.config(text=f"{self.refresh_count} refreshes")
+                self.refresh_count+=1

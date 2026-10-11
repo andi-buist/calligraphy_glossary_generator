@@ -42,22 +42,13 @@ class Character:
 
         return active_canvas
 
-class CompoundCharacter(Character):
-    def __init__(self, character_type: CHARACTER_TYPES, definition: any, parent: Character, child: Character):
-        self.character_type = character_type
-        self.definition = definition
-
-        self.parent: Character = parent.clone()
-        self.child: Character = child.clone()
-
-    def generate_glyph(self):
-        pass
-        # 1. get parent empty region
-        
-        # 2. scale child coords to that empty region
-        # 3. combine BrushStroke lists of parent and child, assign to self.strokes
-        # 4. run generate_glyph()
-        pass
+class CharacterJoin:
+    def __init__(self,
+                 character_a: Character,
+                 character_b: Character,
+                 a_pos: Literal["l","r","u","d"]):
+        self.characters:tuple[Character,Character]=(character_a, character_b)
+        self.a_pos:str=a_pos
 
 def glyph_orientation(character: Character) -> Literal["horizontal", "vertical"]:
     hv_score = 0
