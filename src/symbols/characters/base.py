@@ -24,7 +24,6 @@ class Character:
                  strokes: StrokeCollection):
         self.strokes = [strokes] if isinstance(strokes, BrushStroke) else strokes
         self.glyph = self.generate_glyph()
-        self.glyph_orientation: Literal["horizontal", "vertical"] = self._get_glyph_orientation()
         self.definition = definition
 
     def clone(self):
@@ -32,7 +31,6 @@ class Character:
         clone.definition = copy.deepcopy(self.definition)
         clone.strokes = copy.deepcopy(self.strokes)
         clone.glyph = clone.generate_glyph()
-        clone.glyph_orientation = clone._get_glyph_orientation()
         return clone
 
     def generate_glyph(self) -> Image.Image:
@@ -44,13 +42,17 @@ class Character:
 
         return active_canvas
 
-    def _get_glyph_orientation(self):
-        hv_score = 0
-        for stroke_bbox in [np.asarray(stroke.bbox) for stroke in flatten_nested_brushstrokes(self.strokes)]:
-            bbox_range = (stroke_bbox[:, 0].max() - stroke_bbox[:, 0].min(),
-                          stroke_bbox[:, 1].max() - stroke_bbox[:, 1].min())
-            if bbox_range[0] > bbox_range[1]:
-                hv_score -= bbox_range[0].max()
-            else:
-                hv_score += bbox_range[1].max()
-        return "horizontal" if hv_score < 0 else "vertical"
+def glyph_orientation(character: Character) -> Literal["horizontal", "vertical"]:
+    hv_score = 0
+    for stroke_bbox in [np.asarray(stroke.bbox) for stroke in flatten_nested_brushstrokes(character.strokes)]:
+        bbox_range = (stroke_bbox[:, 0].max() - stroke_bbox[:, 0].min(),
+                        stroke_bbox[:, 1].max() - stroke_bbox[:, 1].min())
+        if bbox_range[0] > bbox_range[1]:
+            hv_score -= bbox_range[0].max()
+        else:
+            hv_score += bbox_range[1].max()
+    return "horizontal" if hv_score < 0 else "vertical"
+
+def glyph_similarity(a: Character, b: Character):
+    i0, i1 = (np.asarray(1.0 - (np.asarray(el.glyph.convert("L"), dtype=float)/ 255.0), int) for el in (a,b))
+    return np.sum(np.bitwise_and(i0 == 1, i1 == 1)) / max(np.sum(i0 == 1),np.sum(i1 == 1))

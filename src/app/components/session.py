@@ -1,7 +1,5 @@
-import os
 import tkinter as tk
-from tkinter import messagebox, ttk
-from PIL import Image, ImageTk
+from tkinter import messagebox
 import typing
 
 from src.symbols.characters.base import Character
@@ -31,7 +29,6 @@ class CharacterEditorSession:
         self.character_stroke_profile_bounds_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
 
         self.character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
-        self.character_object_cache: tuple[Character, ImageTk.PhotoImage] | None = None # must cache the photoimage too, as otherwise it gets GC'd
 
         self.show_stroke_options_var=tk.BooleanVar(master, False)
 
@@ -41,7 +38,6 @@ class CharacterEditorSession:
         first_hash=next(iter(self.character_glossary_data))
         self.character_hash=first_hash
         self.character_definition_to_editor(self.json_to_character(self.character_glossary_data[first_hash]))
-        self.rebuild_active_character_image_cache()
 
     def refresh(self, change: str = "all"):
         if self.on_change is not None:
@@ -78,7 +74,6 @@ class CharacterEditorSession:
             self.character_definition_to_editor(
                 self.json_to_character(self.character_glossary_data[hash])
             )
-            self.rebuild_active_character_image_cache()
             self.refresh("selection")
         else:
             raise KeyError(f"{hash} is not a valid character hash.")
@@ -130,44 +125,16 @@ class CharacterEditorSession:
         ))
 
     def stroke_changed(self):
-        self.rebuild_active_character_image_cache()
         self.commit_active_character_to_memory()
         self.refresh("stroke")
 
     def profile_changed(self):
-        self.rebuild_active_character_image_cache()
         self.commit_active_character_to_memory()
         self.refresh("preview")
 
     def update_treeview(self, *_):
         self.commit_active_character_to_memory()
         self.refresh("metadata")
-
-    def rebuild_active_character_image_cache(self):
-        """
-        Sets `self.character_object_cache` to the `Character` object and `ImageTk.PhotoImage`, built from `self.character_stroke_control_points`.
-        """
-        def _internal_build_char() -> Character:
-            strokes=[]
-            for idx, control_points in enumerate(self.character_stroke_control_points):
-                if len(control_points) > 1:
-                    scaled_control_points=self._get_normalized_stroke_control_points(idx)
-                    strokes.append(BrushStroke(control_points=scaled_control_points,
-                                                profile=CurveProfile(control_points=self.character_stroke_profile_control_points[idx],
-                                                                    bounds=tuple(float(var.get()) for var in self.character_stroke_profile_bounds_vars[idx]))))
-
-            return Character(definition=[(x.get(),y.get()) for x,y in self.character_defs_vars],
-                             strokes=strokes)
-
-        if len(self.character_stroke_control_points) > 0:
-            sub_lengths_check=[len(el) > 1 for el in self.character_stroke_control_points]
-            if any(sub_lengths_check):
-                char_tmp=_internal_build_char()
-                self.character_object_cache=(char_tmp, ImageTk.PhotoImage(char_tmp.glyph))
-            else:
-                self.character_object_cache=None
-        else:
-            self.character_object_cache=None
 
     def _get_normalized_stroke_control_points(self, idx: int) -> list[tuple[float,float]]:
         grid_path = self.character_stroke_control_points[idx]

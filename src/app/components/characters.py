@@ -1,9 +1,12 @@
 import tkinter as tk
 from tkinter import ttk
 import typing
+from PIL import Image, ImageDraw, ImageTk
 
+from src.symbols.characters.base import Character, CHARACTER_TYPES
+from src.symbols.strokes import CurveProfile, BrushStroke, StrokeCollection
+from src.symbols.radicals import get_largest_rectangular_area
 from src.app.components.session import CharacterEditorSession
-from src.symbols.characters.base import CHARACTER_TYPES
 
 class CharacterDefinitions(tk.Frame):
     def __init__(self, parent, session: CharacterEditorSession):
@@ -64,6 +67,8 @@ class CharacterDefinitions(tk.Frame):
 class CharacterPreview(tk.Frame):
     def __init__(self, parent, session: CharacterEditorSession):
         self.session = session
+        
+        self.character_object_cache: tuple[Character, ImageTk.PhotoImage] | None = None # must cache the photoimage too, as otherwise it gets GC'd
 
         super().__init__(parent)
         self.columnconfigure(0, weight=1)
@@ -74,14 +79,51 @@ class CharacterPreview(tk.Frame):
         for child in self.winfo_children():
             child.destroy()
 
-        if self.session.character_object_cache is None:
-            return
+        self.refresh_active_character_image_cache()
 
         tk.Label(self, text="Rendered Glyph").grid(column=0, row=0, sticky="NEW")
         image_label=tk.Label(
             self,
-            image=self.session.character_object_cache[1],
+            image=self.character_object_cache[1],
             highlightthickness=1,
             highlightbackground="black",
         )
         image_label.grid(column=0, row=1)
+
+    def refresh_active_character_image_cache(self):
+        """
+        Sets `self.character_object_cache` to the `Character` object and `ImageTk.PhotoImage`, built from `self.character_stroke_control_points`.
+        """
+        def internal_build_char() -> Character:
+            strokes=[]
+            for idx, control_points in enumerate(self.session.character_stroke_control_points):
+                if len(control_points) > 1:
+                    scaled_control_points=self.session._get_normalized_stroke_control_points(idx)
+                    strokes.append(BrushStroke(control_points=scaled_control_points,
+                                                profile=CurveProfile(control_points=self.session.character_stroke_profile_control_points[idx],
+                                                                    bounds=tuple(float(var.get()) for var in self.session.character_stroke_profile_bounds_vars[idx]))))
+
+            return Character(definition=[(x.get(),y.get()) for x,y in self.session.character_defs_vars],
+                             strokes=strokes)
+
+        def generate_preview_image(character: Character) -> ImageTk.PhotoImage:
+            glyph = character.glyph
+            (rect_area), _ = get_largest_rectangular_area(character.glyph)
+
+            draw=ImageDraw.Draw(glyph, "RGBA")
+            draw.rectangle(rect_area, fill="#ff000033", outline="#ff0000")
+
+            return ImageTk.PhotoImage(glyph)
+
+
+        if len(self.session.character_stroke_control_points) > 0:
+            sub_lengths_check=[len(el) > 1 for el in self.session.character_stroke_control_points]
+            if any(sub_lengths_check):
+                character=internal_build_char()
+                self.character_object_cache=(character, generate_preview_image(character))
+            else:
+                self.character_object_cache=None
+        else:
+            self.character_object_cache=None
+
+        
