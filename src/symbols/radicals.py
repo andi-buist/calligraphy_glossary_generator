@@ -1,7 +1,7 @@
 from PIL import Image
 import numpy as np
 from src.symbols import strokes
-from src.symbols.characters.base import Character
+from src.symbols.characters import Character
 
 GLYPH_SIZE = strokes.GLYPH_SIZE
 

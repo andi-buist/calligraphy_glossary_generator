@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 import typing
 
-from src.symbols.characters.base import Character
+from src.symbols.characters import Character
 from src.symbols.strokes import CurveProfile, BrushStroke, StrokeCollection
 from src.dictionary.data import import_glossary_json, export_glossary_json
 

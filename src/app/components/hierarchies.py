@@ -8,7 +8,7 @@ import secrets
 from bidict import bidict
 
 from src.app.components.session import CharacterEditorSession
-from src.symbols.characters.base import CHARACTER_TYPES
+from src.symbols.characters import CHARACTER_TYPES
 from src.symbols.strokes import CurveProfile
 
 TREEVIEW_ICONS_FP="src/app/icons"

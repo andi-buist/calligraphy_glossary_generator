@@ -2,8 +2,9 @@ import tkinter as tk
 from tkinter import ttk
 import typing
 from PIL import Image, ImageDraw, ImageTk
+from threading import Thread
 
-from src.symbols.characters.base import Character, CHARACTER_TYPES
+from src.symbols.characters import Character, CHARACTER_TYPES, glyph_similarity
 from src.symbols.strokes import CurveProfile, BrushStroke, StrokeCollection
 from src.symbols.radicals import get_largest_rectangular_area
 from src.app.components.session import CharacterEditorSession
@@ -68,7 +69,7 @@ class CharacterPreview(tk.Frame):
     def __init__(self, parent, session: CharacterEditorSession):
         self.session = session
         
-        self.character_object_cache: tuple[Character, ImageTk.PhotoImage] | None = None # must cache the photoimage too, as otherwise it gets GC'd
+        self.character_object_cache: tuple[Character, ImageTk.PhotoImage] = None # must cache the photoimage too, as otherwise it gets GC'd
 
         super().__init__(parent)
         self.columnconfigure(0, weight=1)
@@ -89,6 +90,11 @@ class CharacterPreview(tk.Frame):
             highlightbackground="black",
         )
         image_label.grid(column=0, row=1)
+
+        self.similarity_score_label=tk.Label(self, text="")
+        self.similarity_score_label.grid(column=0, row=2)
+        t=Thread(target=self.get_similarity_scores, daemon=True)
+        t.start()
 
     def refresh_active_character_image_cache(self):
         """
@@ -126,4 +132,12 @@ class CharacterPreview(tk.Frame):
         else:
             self.character_object_cache=None
 
-        
+    def get_similarity_scores(self):
+        this_char = self.session.json_to_character(self.session.character_glossary_data[self.session.character_hash])
+        other_chars = {hash: self.session.json_to_character(el) for hash,el in self.session.character_glossary_data.items() if hash != self.session.character_hash}
+
+        result={hash: glyph_similarity(this_char, other_char) for hash,other_char in other_chars.items()}
+        top_score_hash=sorted(result, key=result.get, reverse=True)[0]
+
+        if result.get(top_score_hash) > 0.80:
+            self.similarity_score_label.config(text=f"Similar character found:\n{top_score_hash}: {100 * result.get(top_score_hash):.1f}%")

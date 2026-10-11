@@ -4,7 +4,7 @@ import numpy as np
 import textwrap
 
 from src.symbols import radicals
-from src.symbols.characters.base import *
+from src.symbols.characters import *
 
 def _row_col(n: int):
     """

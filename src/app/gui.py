@@ -6,13 +6,35 @@ from src.app.components.hierarchies import StrokeHierarchy, CharacterHierarchy
 from src.app.components.characters import CharacterDefinitions, CharacterPreview
 from src.app.components.strokes import StrokeEditor
 
-class DrawingTool(tk.Frame):
+class CharacterEditorApp(ttk.Notebook):
+    def __init__(self, parent):
+        self.session = CharacterEditorSession(parent)
+
+        super().__init__(parent)
+
+        self.glossary_editor = GlossaryEditor(self, self.session)
+        self.glossary_editor.pack(fill="both", expand=True)
+
+        self.add(self.glossary_editor, text="Glossary Editor")
+
+    def on_app_close(self):
+        answer=messagebox.askyesno(
+            "Exit",
+            "Are you sure you want to exit?",
+            parent=self.winfo_toplevel(),
+        )
+        if answer:
+            self.session.export_glossary_json()
+            self.winfo_toplevel().destroy()
+
+
+class GlossaryEditor(tk.Frame):
     GRID_BREAKS = CharacterEditorSession.GRID_BREAKS
     CELL_SIZE = CharacterEditorSession.CELL_SIZE
     canvas_size = CharacterEditorSession.CANVAS_SIZE
 
-    def __init__(self, parent):
-        self.session = CharacterEditorSession(parent)
+    def __init__(self, parent: tk.Misc, session: CharacterEditorSession):
+        self.session = session
 
         super().__init__(parent, padx=24, pady=24)
         self._build_layout()
@@ -80,13 +102,3 @@ class DrawingTool(tk.Frame):
             self.stroke_editor.refresh()
             self.stroke_hierarchy.refresh()
             self.character_preview.refresh()
-
-    def on_app_close(self):
-        answer=messagebox.askyesno(
-            "Exit",
-            "Are you sure you want to exit?",
-            parent=self.winfo_toplevel(),
-        )
-        if answer:
-            self.session.export_glossary_json()
-            self.winfo_toplevel().destroy()
