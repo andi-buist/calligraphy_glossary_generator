@@ -37,6 +37,7 @@ class StrokeHierarchy(tk.Frame):
         self.dictionary_treeview.pack(expand=True, fill="both")
         self.dictionary_treeview.bind("<ButtonPress-1>", self.drag_stroke_item_start)
         self.dictionary_treeview.bind("<ButtonRelease-1>", self.drag_stroke_item_end)
+        self.dictionary_treeview.bind("<ButtonPress-3>", self.remove_stroke)
 
         self.refresh()
 
@@ -114,6 +115,17 @@ class StrokeHierarchy(tk.Frame):
                 self.parent_stroke(self.selected_stroke_idx, idx)
         elif item == self.tree_root_id:
             self.unparent_stroke(self.selected_stroke_idx)
+
+    def remove_stroke(self, event: tk.Event):
+        tv: ttk.Treeview=self.dictionary_treeview
+        item=tv.identify("item", event.x, event.y)
+        idx=self.stroke_tree_ids.inverse.get(item)
+        if idx is not None and len(self.session.active_stroke_source_control_points) > 1:
+            self.session.character_stroke_control_points.pop(idx)
+            self.session.active_stroke_source_control_points.pop(idx)
+            self.session.character_stroke_profile_control_points.pop(idx)
+            self.session.character_stroke_profile_bounds_vars.pop(idx)
+            self.session.stroke_changed()
 
     def parent_stroke(self, child_stroke_idx: int, parent_stroke_idx: int):
         current_character_parentage: dict[int, list[int]]=self.session.character_glossary_stroke_parentage_data[self.session.character_hash].copy()
