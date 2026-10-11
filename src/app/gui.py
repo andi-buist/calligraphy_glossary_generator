@@ -15,7 +15,11 @@ class CharacterEditorApp(ttk.Notebook):
         self.glossary_editor = GlossaryEditor(self, self.session)
         self.glossary_editor.pack(fill="both", expand=True)
 
+        self.glossary_viewer = GlossaryViewer(self, self.session)
+        self.glossary_viewer.pack(fill="both", expand=True)
+
         self.add(self.glossary_editor, text="Glossary Editor")
+        self.add(self.glossary_viewer, text="Glossary Viewer")
 
     def on_app_close(self):
         answer=messagebox.askyesno(
@@ -38,7 +42,7 @@ class GlossaryEditor(tk.Frame):
 
         super().__init__(parent, padx=24, pady=24)
         self._build_layout()
-        self.session.on_change = self.refresh
+        self.session.on_change.append(self.refresh)
 
         self.refresh("all")
 
@@ -102,3 +106,21 @@ class GlossaryEditor(tk.Frame):
             self.stroke_editor.refresh()
             self.stroke_hierarchy.refresh()
             self.character_preview.refresh()
+
+class GlossaryViewer(tk.Frame):
+    def __init__(self, parent: tk.Misc, session: CharacterEditorSession):
+        self.session = session
+        self.refresh_count: int = 0
+
+        super().__init__(parent, padx=24, pady=24)
+        self.session.on_change.append(self.refresh)
+
+        self.refresh()
+
+    def refresh(self, change: str = "all"):
+        for child in self.winfo_children():
+            child.destroy()
+
+        tk.Label(self, text=f"{self.refresh_count} refreshes").grid(column=0, row=0, sticky="NEW")
+
+        self.refresh_count+=1

@@ -14,6 +14,8 @@ class StrokeEditor(tk.Frame):
 
         super().__init__(parent, padx=4, pady=4, highlightthickness=1, highlightbackground="black")
 
+        self.show_stroke_options_var=tk.BooleanVar(self, False)
+
         self.refresh()
 
     def refresh(self):
@@ -55,7 +57,7 @@ class StrokeEditor(tk.Frame):
                  f"Brushstroke {active_idx}",
         ).grid(column=1, row=0, columnspan=2)
 
-        if self.session.show_stroke_options_var.get() and has_active_stroke:
+        if self.show_stroke_options_var.get() and has_active_stroke:
             curve_profile=CurveProfile(
                 control_points=self.session.character_stroke_profile_control_points[active_idx],
                 bounds=tuple(
@@ -89,7 +91,7 @@ class StrokeEditor(tk.Frame):
 
         tk.Checkbutton(
             self,
-            variable=self.session.show_stroke_options_var,
+            variable=self.show_stroke_options_var,
             text="Show stroke options",
             command=lambda: self.session.refresh("stroke"),
         ).grid(column=0, row=2, sticky="SW")

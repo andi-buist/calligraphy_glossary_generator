@@ -13,7 +13,7 @@ class CharacterEditorSession:
 
     def __init__(self, master: tk.Misc):
         self.master: tk.Misc=master
-        self.on_change: typing.Callable[[str], None] | None = None
+        self.on_change: list[typing.Callable[[str], None]]=[]
 
         # Globally relevant =================
         self.character_glossary_data: dict={}
@@ -30,8 +30,6 @@ class CharacterEditorSession:
 
         self.character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
 
-        self.show_stroke_options_var=tk.BooleanVar(master, False)
-
         if not self.character_glossary_data:
             raise ValueError("The glossary must contain at least one character.")
 
@@ -40,9 +38,9 @@ class CharacterEditorSession:
         self.character_definition_to_editor(self.json_to_character(self.character_glossary_data[first_hash]))
 
     def refresh(self, change: str = "all"):
-        if self.on_change is not None:
-            #print(f"Refresh @{change}")
-            self.on_change(change)
+        if len(self.on_change) > 0:
+            for refresh_callable in self.on_change:
+                refresh_callable(change)
 
     def import_glossary_json(self):
         glossary_data, glossary_parentage_data = import_glossary_json()
