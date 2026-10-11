@@ -42,13 +42,78 @@ class Character:
 
         return active_canvas
 
-class CharacterJoin:
+class CompoundCharacter(Character):
     def __init__(self,
-                 character_a: Character,
-                 character_b: Character,
-                 a_pos: Literal["l","r","u","d"]):
-        self.characters:tuple[Character,Character]=(character_a, character_b)
-        self.a_pos:str=a_pos
+                 characters: tuple[Character, Character],
+                 placement: Literal["LEFT-RIGHT", "RIGHT-LEFT", "TOP-BOTTOM", "BOTTOM-TOP"]):
+        self.characters:tuple[Character,Character]=characters
+        self.placement:str=placement
+        self.glyph = self.generate_glyph()
+
+    def generate_glyph(self) -> Image.Image:
+        """Draw a glyph image by combining the source characters."""
+        def draw_character(character: Character, canvas: Image, fill_extent:bool=True):
+            strokes=flatten_nested_brushstrokes(character.strokes)
+
+            if strokes is not None and fill_extent:
+                scaled_strokes: list[BrushStroke]=[]
+                min_x = min(stroke.bbox[0][0] for stroke in strokes)
+                min_y = min(stroke.bbox[0][1] for stroke in strokes)
+                max_x = max(stroke.bbox[1][0] for stroke in strokes)
+                max_y = max(stroke.bbox[1][1] for stroke in strokes)
+                width = max_x - min_x
+                height = max_y - min_y
+
+                def scale_point(point: tuple[float, float]) -> tuple[float, float]:
+                    x = (point[0] - min_x) / width if width else 0.5
+                    y = (point[1] - min_y) / height if height else 0.5
+                    return x, y
+
+                for stroke in strokes:
+                    scaled_stroke = copy.copy(stroke)
+                    scaled_stroke.control_points = [
+                        scale_point(point) for point in stroke.control_points
+                    ]
+                    scaled_stroke.spline_path_points = [
+                        scale_point(point) for point in stroke.spline_path_points
+                    ]
+                    scale_min = scale_point(stroke.bbox[0])
+                    scale_max = scale_point(stroke.bbox[1])
+                    scaled_stroke.bbox = (
+                        scale_min,
+                        scale_max,
+                    )
+                    scaled_strokes.append(scaled_stroke)
+            else:
+                scaled_strokes=strokes
+
+            for stroke in scaled_strokes:
+                canvas = stroke.draw(canvas)
+
+            return canvas
+
+        match self.placement:
+            case "LEFT-RIGHT" | "RIGHT-LEFT":
+                canvas0 = Image.new(mode="RGBA", size=(GLYPH_SIZE //2, GLYPH_SIZE), color=(255, 255, 255, 255))
+                canvas1 = Image.new(mode="RGBA", size=(GLYPH_SIZE //2, GLYPH_SIZE), color=(255, 255, 255, 255))
+            case "TOP-BOTTOM" | "BOTTOM-TOP":
+                canvas0 = Image.new(mode="RGBA", size=(GLYPH_SIZE, GLYPH_SIZE // 2), color=(255, 255, 255, 255))
+                canvas1 = Image.new(mode="RGBA", size=(GLYPH_SIZE, GLYPH_SIZE // 2), color=(255, 255, 255, 255))
+
+        canvas0 = draw_character(self.characters[0], canvas0)
+        canvas1 = draw_character(self.characters[1], canvas1)
+
+        output_img = Image.new(mode="RGBA", size=(GLYPH_SIZE, GLYPH_SIZE), color=(255, 255, 255, 255))
+
+        match self.placement:
+            case "LEFT-RIGHT" | "RIGHT-LEFT":
+                output_img.paste(canvas0, (0,0))
+                output_img.paste(canvas1, (GLYPH_SIZE // 2,0))
+            case "TOP-BOTTOM" | "BOTTOM-TOP":
+                output_img.paste(canvas0, (0,0))
+                output_img.paste(canvas1, (0,GLYPH_SIZE // 2))
+
+        return output_img
 
 def glyph_orientation(character: Character) -> Literal["horizontal", "vertical"]:
     hv_score = 0

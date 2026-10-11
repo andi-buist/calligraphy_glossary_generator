@@ -134,14 +134,17 @@ class BrushStroke():
         return bpp
 
     def draw(self, canvas: Image):
+        """
+        Adds the stroke to the supplied canvas and returns the modified result.
+        """
         active_canvas = canvas
 
-        canvas_area = tuple(x * (1 - GLYPH_MARGIN * 2) for x in active_canvas.size)
-        canvas_margin = tuple(x * GLYPH_MARGIN for x in active_canvas.size)
+        canvas_area = tuple(ax * (1 - GLYPH_MARGIN * 2) for ax in active_canvas.size)
+        canvas_margin = tuple(ax * GLYPH_MARGIN for ax in active_canvas.size)
 
         scaled_path_points = []
-        for x in self.spline_path_points:
-            _pos = tuple(canvas_margin[n] + x[n] * canvas_area[n] for n in [0, 1])
+        for pt in self.spline_path_points:
+            _pos = tuple(canvas_margin[n] + pt[n] * canvas_area[n] for n in [0, 1])
             scaled_path_points.append(_pos)
 
         draw = ImageDraw.Draw(active_canvas)
@@ -189,27 +192,27 @@ def map_unit_coords_to_margined_canvas(coords: tuple[float, float]) -> tuple[flo
     drawable_scale = 1.0 - 2.0 * GLYPH_MARGIN
     return tuple(GLYPH_MARGIN + coord * drawable_scale for coord in coords)
 
-def flatten_nested_brushstrokes(strokes: StrokeCollection):
-    def flatten_stroke_tree(stroke: BrushStroke | BrushStrokeGroup):
+def flatten_nested_brushstrokes(strokes: StrokeCollection) -> list[BrushStroke]:
+    def flatten_stroke_tree(stroke: BrushStroke | BrushStrokeGroup) -> list[BrushStroke]:
         if isinstance(stroke, BrushStroke):
-            yield stroke
-        else:
-            for child in stroke:
-                if not isinstance(child, (BrushStroke, BrushStrokeGroup)):
-                    raise TypeError("BrushStrokeGroup children must be BrushStroke or BrushStrokeGroup objects")
-                yield from flatten_stroke_tree(child)
-    
-    if isinstance(strokes, BrushStroke):
-        yield strokes
-    elif isinstance(strokes, BrushStrokeGroup):
-        for stroke in strokes:
-            if not isinstance(stroke, (BrushStroke, BrushStrokeGroup)):
+            return [stroke]
+
+        flattened: list[BrushStroke] = []
+        for child in stroke:
+            if not isinstance(child, (BrushStroke, BrushStrokeGroup)):
                 raise TypeError("BrushStrokeGroup children must be BrushStroke or BrushStrokeGroup objects")
-            yield from flatten_stroke_tree(stroke)
-    elif isinstance(strokes, list):
+            flattened.extend(flatten_stroke_tree(child))
+        return flattened
+
+    if isinstance(strokes, BrushStroke):
+        return [strokes]
+    if isinstance(strokes, (BrushStrokeGroup, list)):
+        flattened: list[BrushStroke] = []
         for stroke in strokes:
             if not isinstance(stroke, (BrushStroke, BrushStrokeGroup)):
+                if isinstance(strokes, BrushStrokeGroup):
+                    raise TypeError("BrushStrokeGroup children must be BrushStroke or BrushStrokeGroup objects")
                 raise TypeError("Stroke lists may contain only BrushStroke or BrushStrokeGroup objects")
-            yield from flatten_stroke_tree(stroke)
-    else:
-        raise TypeError("Strokes must be a BrushStroke, BrushStrokeGroup, or a list of those objects")
+            flattened.extend(flatten_stroke_tree(stroke))
+        return flattened
+    raise TypeError("Strokes must be a BrushStroke, BrushStrokeGroup, or a list of those objects")

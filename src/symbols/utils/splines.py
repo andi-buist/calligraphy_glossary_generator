@@ -57,7 +57,7 @@ def resample_by_arc_length(points: list[tuple[float, float]], sample_spacing: fl
 
 def get_spline_path_points(control_points:list[tuple[float,float]]):
     DEGREE=2
-    SAMPLE_SPACING=0.01
+    SAMPLE_SPACING=0.005
 
     curve_points=control_points
     if len(control_points) > 2:
