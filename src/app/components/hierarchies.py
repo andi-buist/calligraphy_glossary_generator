@@ -4,8 +4,8 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import typing
-import secrets
 from bidict import bidict
+import secrets
 
 from src.app.components.session import AppSession
 from src.symbols.characters import CHARACTER_TYPES
@@ -253,6 +253,10 @@ class CharacterHierarchy(tk.Frame):
     def add_entry(self, character_template: dict | None = None):
         tv: ttk.Treeview=self.dictionary_treeview
         hash: str=secrets.token_hex(4)
+
+        # quick check to ensure we don't overwrite an existing entry
+        while hash in self.session.character_glossary_data.keys():
+            hash=secrets.token_hex(4)
 
         if character_template is None:
             # if the user has a type selected, new entry should be placed here

@@ -4,7 +4,7 @@ import typing
 
 from src.symbols.characters import Character
 from src.symbols.strokes import CurveProfile, BrushStroke, StrokeCollection
-from src.dictionary.data import import_glossary_json, export_glossary_json
+from src.dictionary.data import import_characters_from_json, export_characters_to_json
 
 class AppSession:
     GRID_BREAKS = 15
@@ -16,9 +16,8 @@ class AppSession:
         self.on_change: list[typing.Callable[[str], None]]=[]
 
         # Globally relevant =================
-        self.character_glossary_data: dict={}
-        self.character_glossary_stroke_parentage_data: dict[str,dict[int,list[int]]]={}
-        self.import_glossary_json()
+        self.character_glossary_data: dict[str, Character]={}
+        self.import_characters()
 
         # Relevant to current character =====
         self.current_stroke_idx: int=0
@@ -35,21 +34,19 @@ class AppSession:
 
         first_hash=next(iter(self.character_glossary_data))
         self.character_hash=first_hash
-        self.character_definition_to_editor(self.json_to_character(self.character_glossary_data[first_hash]))
+        self.character_definition_to_editor(self.character_glossary_data[first_hash])
 
     def refresh(self, change: str = "all"):
         if len(self.on_change) > 0:
             for refresh_callable in self.on_change:
                 refresh_callable(change)
 
-    def import_glossary_json(self):
-        glossary_data, glossary_parentage_data = import_glossary_json()
-        self.character_glossary_data=glossary_data
-        self.character_glossary_stroke_parentage_data=glossary_parentage_data
+    def import_characters(self):
+        self.character_glossary_data = import_characters_from_json()
 
     def export_glossary_json(self):
         self.commit_active_character_to_memory()
-        export_glossary_json(self.character_glossary_data, self.character_glossary_stroke_parentage_data)
+        export_characters_to_json(self.character_glossary_data)
 
     def select_stroke(self, idx: int):
         """
@@ -70,7 +67,7 @@ class AppSession:
                 self.commit_active_character_to_memory()
             self.character_hash=hash
             self.character_definition_to_editor(
-                self.json_to_character(self.character_glossary_data[hash])
+                self.character_glossary_data[hash]
             )
             self.refresh("selection")
         else:
@@ -176,34 +173,6 @@ class AppSession:
             (tk.StringVar(self.master, t), tk.StringVar(self.master, d)) for t,d in character.definition
         ]
 
-    def json_to_character(self, item: dict) -> Character:
-        """
-        Converts a glossary json item into a `Character`.
-        """
-        source_strokes: list[list[list]]=item.get("stroke_control_points")
-        source_profile_control_points=item.get("stroke_profile_control_points")
-        source_profile_bounds=item.get("stroke_profile_bounds")
-        if (source_profile_control_points is None) != (source_profile_bounds is None):
-            raise ValueError("Stroke profile control points and bounds must be provided together.")
-        if source_profile_control_points is not None and (
-            len(source_profile_control_points) != len(source_strokes)
-            or len(source_profile_bounds) != len(source_strokes)
-        ):
-            raise ValueError("Stroke profile data must match the number of strokes.")
-
-        strokes: StrokeCollection=[]
-        for idx, stroke_coords in enumerate(source_strokes):
-            profile = None
-            if source_profile_control_points is not None:
-                profile = CurveProfile(
-                    control_points=[tuple(point) for point in source_profile_control_points[idx]],
-                    bounds=tuple(source_profile_bounds[idx]),
-                )
-            strokes.append(BrushStroke(stroke_coords, profile))
-
-        return Character(item.get("definition"),
-                         strokes)
-
     def commit_active_character_to_memory(self):
         """
         Copies editor state to the active character's entry in `self.character_glossary_data`.
@@ -218,7 +187,7 @@ class AppSession:
         item = self.character_glossary_data[self.character_hash]
 
         # for each locally tracked variable, assign to the working glossary
-        item["definition"] = [(t.get(), d.get()) for t,d in self.character_defs_vars]
+        item.definition = [(t.get(), d.get()) for t,d in self.character_defs_vars]
 
         active_strokes = []
         character_stroke_profile_control_points = []

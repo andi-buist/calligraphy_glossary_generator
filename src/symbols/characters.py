@@ -18,30 +18,52 @@ CHARACTER_TYPES = Literal["noun",
                           "letter", 
                           "symbol"]
 
+class Glyph:
+    def __init__(self,
+                 strokes: StrokeCollection,
+                 extent: tuple[tuple[float,float], tuple[float,float]] = ((0.0,0.0),(1.0,1.0))):
+        self.strokes = [strokes] if isinstance(strokes, BrushStroke) else strokes
+        self.extent = extent
+
+    def draw(self) -> Image.Image:
+        """Draw a glyph image from the character strokes."""
+        subwidth = self.extent[1][0] - self.extent[0][0]
+        subheight = self.extent[1][1] - self.extent[0][1]
+        width, height = (GLYPH_SIZE, GLYPH_SIZE)
+
+        stroke_canvas = Image.new(mode="RGBA", size=(int(width * subwidth), int(height * subheight)), color=(255, 255, 255, 255))
+        glyph_canvas = Image.new(mode="RGBA", size=(width, height), color=(255, 255, 255, 255))
+
+        for stroke in flatten_nested_brushstrokes(self.strokes):
+            stroke_canvas = stroke.draw(stroke_canvas)
+
+        glyph_canvas.paste(stroke_canvas, (int(width * self.extent[0][0]), int(height * self.extent[0][1])))
+        return glyph_canvas
+
 class Character:
     def __init__(self,
                  definition: list[tuple[CHARACTER_TYPES, str]],
-                 strokes: StrokeCollection):
-        self.strokes = [strokes] if isinstance(strokes, BrushStroke) else strokes
-        self.glyph = self.generate_glyph()
+                 glyphs: list[Glyph]):
         self.definition = definition
+        self.glyphs = glyphs
 
     def clone(self):
         clone = type(self).__new__(type(self))
         clone.definition = copy.deepcopy(self.definition)
-        clone.strokes = copy.deepcopy(self.strokes)
-        clone.glyph = clone.generate_glyph()
+        clone.glyphs = copy.deepcopy(self.glyphs)
         return clone
 
-    def generate_glyph(self) -> Image.Image:
+    def draw(self) -> Image.Image:
         """Draw a glyph image from the character strokes."""
-        active_canvas = Image.new(mode="RGBA", size=(GLYPH_SIZE, GLYPH_SIZE), color=(255, 255, 255, 255))
+        character_canvas = Image.new(mode="RGBA", size=(GLYPH_SIZE, GLYPH_SIZE), color=(255, 255, 255, 255))
 
-        for stroke in flatten_nested_brushstrokes(self.strokes):
-            active_canvas = stroke.draw(active_canvas)
+        for glyph in self.glyphs:
+            glyph_canvas = glyph.draw()
+            character_canvas.paste(glyph_canvas)
 
-        return active_canvas
+        return character_canvas
 
+# TODO: cleanup
 class CompoundCharacter(Character):
     def __init__(self,
                  characters: tuple[Character, Character],
@@ -127,7 +149,7 @@ def glyph_orientation(character: Character) -> Literal["horizontal", "vertical"]
     return "horizontal" if hv_score < 0 else "vertical"
 
 def glyph_similarity(a: Character, b: Character) -> float:
-    i0, i1 = (np.asarray(1.0 - (np.asarray(el.glyph.convert("L"), dtype=float)/ 255.0), int) for el in (a,b))
+    i0, i1 = (np.asarray(1.0 - (np.asarray(el.draw().convert("L"), dtype=float)/ 255.0), int) for el in (a,b))
     return np.sum(np.bitwise_and(i0 == 1, i1 == 1)) / max(np.sum(i0 == 1),np.sum(i1 == 1))
 
 def glyph_similarity_matrix(characters: list[Character]):
