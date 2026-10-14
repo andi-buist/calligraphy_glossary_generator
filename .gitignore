@@ -1,4 +1,5 @@
 .vscode
+.venv
 /notebooks
 **/__pycache__
 data
