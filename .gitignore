@@ -1,4 +1,4 @@
 .vscode
 /notebooks
 **/__pycache__
-src/dictionary/data
+data

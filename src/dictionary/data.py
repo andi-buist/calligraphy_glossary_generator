@@ -6,8 +6,8 @@ import pickle
 from src.symbols.strokes import BrushStroke
 from src.symbols.characters import Character, Glyph
 
-CHARACTERS_JSON_FP="src/dictionary/data/characters.json"
-GLYPHS_JSON_FP="src/dictionary/data/glyphs.json"
+CHARACTERS_JSON_FP="data/characters.json"
+GLYPHS_JSON_FP="data/glyphs.json"
 
 
 def import_character_definitions_from_json():
