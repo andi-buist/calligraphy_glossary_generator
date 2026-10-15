@@ -1,7 +1,6 @@
 import json
 import jsbeautifier
-import hashlib
-import pickle
+import uuid
 
 from src.symbols.strokes import BrushStroke
 from src.symbols.characters import Character, Glyph
@@ -28,16 +27,28 @@ def import_glyph_definitions_from_json():
     with open(GLYPHS_JSON_FP, "r") as file:
         source_dict: dict[str, list[list[list[float, float]]]]=json.load(file)
 
-    glyphs_data: dict[str, list[list[tuple]]]={}
-
-    for hash, data in source_dict.items():
-        glyphs_data[hash]=[[(x,y) for x,y in el] for el in data]
-
+    glyphs_data = {}
+    for glyph_hash, data in source_dict.items():
+        detail = data["detail"]
+        strokes_data = data["strokes"]
+        
+        strokes = [[(x, y) for x, y in stroke] for stroke in strokes_data]
+        glyphs_data[glyph_hash] = (detail, strokes)
     return glyphs_data
 
-def import_characters_from_json() -> dict[str, Character]:
+def import_glyphs_from_json() -> dict[str, Glyph]:
+    return {
+        glyph_hash: Glyph(
+            [BrushStroke(control_points) for control_points in strokes],
+            detail=detail,
+        )
+        for glyph_hash, (detail, strokes) in import_glyph_definitions_from_json().items()
+    }
+
+def import_characters_from_json(glyph_glossary_data: dict[str, Glyph] | None = None) -> dict[str, Character]:
     glossary_data = import_character_definitions_from_json()
-    glyphs_data = import_glyph_definitions_from_json()
+    if glyph_glossary_data is None:
+        glyph_glossary_data = import_glyphs_from_json()
 
     output_characters: dict[str, Character]={}
 
@@ -47,10 +58,12 @@ def import_characters_from_json() -> dict[str, Character]:
         glyph_extent_collection: list[tuple[tuple[float,float], tuple[float,float]]]=[]
 
         for glyph_hash, glyph_extent in zip(character_data.get("glyphs"), character_data.get("glyph_extents")):
-            strokes = [BrushStroke(ctrl_pts) for ctrl_pts in glyphs_data[glyph_hash]]
-            glyph = Glyph(strokes)
-
-            glyph_collection.append(glyph)
+            try:
+                glyph_collection.append(glyph_glossary_data[glyph_hash])
+            except KeyError as error:
+                raise KeyError(
+                    f"Character {character_hash!r} references unknown glyph {glyph_hash!r}."
+                ) from error
             glyph_extent_collection.append(glyph_extent)
 
         output_characters[character_hash]=Character(
@@ -61,6 +74,7 @@ def import_characters_from_json() -> dict[str, Character]:
 
     return output_characters
 
+
 def export_json(data: dict, filepath: str):
     with open(filepath, "w") as file:
         options = jsbeautifier.default_options()
@@ -69,30 +83,37 @@ def export_json(data: dict, filepath: str):
 
         file.write(jsbeautifier.beautify(json.dumps(data), options))
 
-def export_characters_to_json(characters: dict[str, Character]) -> None:
-    glossary_data: dict[str, dict]={}
-    glyphs_data: dict[str, list[list[tuple[float,float]]]]={}
+def export_characters_and_glyphs_to_json(
+    characters: dict[str, Character],
+    glyphs: dict[str, Glyph]
+) -> None:
+    character_data: dict[str, dict]={}
+
+    glyph_hash_by_identity = {
+        id(glyph): glyph_hash for glyph_hash, glyph in glyphs.items()
+    }
 
     for character_hash, character in characters.items():
-        glossary_data[character_hash] = {"definition": character.definition,
+        character_data[character_hash] = {"definition": character.definition,
                                          "glyphs": [],
                                          "glyph_extents": character.glyph_extents
                                          }
         
         for glyph in character.glyphs:
-            ctrl_pts: list[list[tuple[float,float]]] = []
-            for stroke in glyph.strokes:
-                ctrl_pts.append(stroke.control_points)
+            character_data[character_hash]["glyphs"].append(
+                glyph_hash_by_identity[id(glyph)]
+            )
 
-            if ctrl_pts not in glyphs_data.values():
-                new_glyph_hash = hashlib.md5(pickle.dumps(ctrl_pts)).hexdigest()
-                glyphs_data[new_glyph_hash] = ctrl_pts
-        
-                glossary_data[character_hash]["glyphs"].append(new_glyph_hash)
-            else:
-                existing_glyph_hash = list(glyphs_data.keys())[list(glyphs_data.values()).index(ctrl_pts)]
+    glyphs_data = {}
+    for glyph_hash, glyph in glyphs.items():
+        strokes = [stroke.control_points for stroke in glyph.strokes]
+        if glyph.detail is None:
+            glyphs_data[glyph_hash] = strokes
+        else:
+            glyphs_data[glyph_hash] = {
+                "detail": glyph.detail,
+                "strokes": strokes,
+            }
 
-                glossary_data[character_hash]["glyphs"].append(existing_glyph_hash)
-
-    export_json(glossary_data, CHARACTERS_JSON_FP)
+    export_json(character_data, CHARACTERS_JSON_FP)
     export_json(glyphs_data, GLYPHS_JSON_FP)

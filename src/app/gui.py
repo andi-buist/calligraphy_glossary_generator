@@ -1,10 +1,10 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
-from pprint import pprint
 
 from src.app.components.session import AppSession
-from src.app.components.hierarchies import StrokeHierarchy, CharacterHierarchy
+from src.app.components.hierarchies import CharacterHierarchy, GlyphHierarchy
 from src.app.components.characters import CharacterDefinitions, CharacterPreview
+from src.app.components.glyphs import GlyphEditor
 from src.app.components.strokes import StrokeEditor
 
 class EditorApp(tk.Frame):
@@ -64,8 +64,13 @@ class CharacterEditor(tk.Frame):
         self.character_definitions = CharacterDefinitions(self.left_pane, self.session)
         self.character_definitions.pack(fill="both", expand=True)
 
-        # self.stroke_editor = StrokeEditor(self, self.session)
-        # self.stroke_editor.grid(column=1, row=0, sticky="NSEW", padx=12)
+        self.editors = ttk.Notebook(self)
+        self.editors.grid(column=1, row=0, sticky="NSEW", padx=12)
+        self.glyph_editor = GlyphEditor(self.editors, self.session)
+        self.stroke_editor = StrokeEditor(self.editors, self.session)
+        self.editors.add(self.glyph_editor, text="Character")
+        self.editors.add(self.stroke_editor, text="Glyph")
+        self.editors.bind("<<NotebookTabChanged>>", self.update_current_page)
 
         self.right_pane=tk.Frame(
             self,
@@ -77,8 +82,8 @@ class CharacterEditor(tk.Frame):
         self.right_pane.columnconfigure(0, weight=1)
         self.right_pane.grid(column=2, row=0, sticky="NSEW", padx=12)
 
-        # self.stroke_hierarchy = StrokeHierarchy(self.right_pane, self.session)
-        # self.stroke_hierarchy.pack(expand=True, fill="both")
+        self.glyph_hierarchy = GlyphHierarchy(self.right_pane, self.session)
+        self.glyph_hierarchy.pack(expand=True, fill="both")
         self.character_preview = CharacterPreview(self.right_pane, self.session)
         self.character_preview.pack(fill="both", pady=8)
 
@@ -86,6 +91,9 @@ class CharacterEditor(tk.Frame):
         self.character_definitions.destroy()
         self.character_definitions = CharacterDefinitions(self.left_pane, self.session)
         self.character_definitions.pack(fill="both", expand=True)
+
+    def update_current_page(self, _event: tk.Event | None = None):
+        self.session.current_page = self.editors.tab(self.editors.select(), "text")
 
     def refresh(self, change: str = "all"):
         match change:
@@ -95,34 +103,26 @@ class CharacterEditor(tk.Frame):
                 self.character_hierarchy.update_active_entry()
             case "preview":
                 self.character_preview.refresh()
-            case _:
-                if change in ("selection", "all"):
-                    self._rebuild_character_fields()
-                    self.character_hierarchy.refresh()
-                #self.stroke_editor.refresh()
-                #self.stroke_hierarchy.refresh()
+            case "selection" | "all":
+                self._rebuild_character_fields()
+                self.character_hierarchy.refresh()
+                self.glyph_editor.refresh()
+                self.stroke_editor.refresh()
+                self.glyph_hierarchy.refresh()
                 self.character_preview.refresh()
-
-class CompoundEditor(tk.Frame):
-    def __init__(self, parent: tk.Misc, session: AppSession):
-        self.session = session
-        self.refresh_count: int = 0
-
-        super().__init__(parent, padx=24, pady=24)
-        self._build_layout()
-        self.session.on_change.append(self.refresh)
-
-        self.refresh()
-
-    def _build_layout(self):
-        for child in self.winfo_children():
-            child.destroy()
-
-        self.test_label=tk.Label(self, text="")
-        self.test_label.grid(column=0, row=0, sticky="NEW")
-
-    def refresh(self, change: str = "all"):
-        match change:
+            case "glyphs":
+                self.glyph_editor.refresh()
+                self.stroke_editor.refresh()
+                self.glyph_hierarchy.refresh()
+                self.character_preview.refresh()
+            case "glyph-selection":
+                self.glyph_editor.refresh()
+                self.stroke_editor.refresh()
+                self.glyph_hierarchy.refresh()
+            case "stroke":
+                self.glyph_editor.refresh()
+                self.stroke_editor.refresh()
+                self.glyph_hierarchy.refresh()
+                self.character_preview.refresh()
             case _:
-                self.test_label.config(text=f"{self.refresh_count} refreshes")
-                self.refresh_count+=1
+                self.character_preview.refresh()

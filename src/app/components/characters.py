@@ -5,7 +5,6 @@ from PIL import Image, ImageDraw, ImageTk
 from threading import Thread
 
 from src.symbols.characters import Character, CHARACTER_TYPES, glyph_similarity
-from src.symbols.strokes import CurveProfile, BrushStroke
 from src.symbols.radicals import get_largest_rectangular_area
 from src.app.components.session import AppSession
 
@@ -43,6 +42,7 @@ class CharacterDefinitions(tk.Frame):
             entry_type_field.grid(column=1, row=idx, sticky="EW")
             entry_def_field=ttk.Entry(self.entries_frame, textvariable=self.session.active_character_defs_vars[idx][1])
             entry_def_field.bind("<Return>", self.session.update_treeview)
+            entry_def_field.bind("<FocusOut>", self.session.update_treeview)
             entry_def_field.grid(column=2, row=idx, sticky="EW")
 
             if idx > 0:
@@ -99,7 +99,7 @@ class CharacterPreview(tk.Frame):
 
     def refresh_active_character_image_cache(self):
         """
-        Sets `self.character_object_cache` to the `Character` object and `ImageTk.PhotoImage`, built from `self.character_stroke_control_points`.
+        Cache the active Character and its rendered preview image.
         """
         def generate_preview_image(character: Character) -> ImageTk.PhotoImage:
             glyph = character.draw()

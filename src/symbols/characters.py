@@ -20,8 +20,10 @@ CHARACTER_TYPES = Literal["noun",
 
 class Glyph:
     def __init__(self,
-                 strokes: list[BrushStroke]):
+                 strokes: list[BrushStroke],
+                 detail: str | None = None):
         self.strokes = [strokes] if isinstance(strokes, BrushStroke) else strokes
+        self.detail = detail
 
     def draw(self, extent: tuple[tuple[float,float], tuple[float,float]] = ((0.0,0.0),(1.0,1.0))) -> Image.Image:
         """Draw a glyph image from the character strokes."""
@@ -29,7 +31,7 @@ class Glyph:
         subwidth = extent[1][0] - extent[0][0]
         subheight = extent[1][1] - extent[0][1]
 
-        glyph_canvas = Image.new(mode="RGBA", size=(int(width * subwidth), int(height * subheight)), color=(255, 255, 255, 255))
+        glyph_canvas = Image.new(mode="RGBA", size=(int(width * subwidth), int(height * subheight)), color=(255, 255, 255, 0))
 
         for stroke in self.strokes:
             glyph_canvas = stroke.draw(glyph_canvas)
@@ -48,7 +50,7 @@ class Character:
     def clone(self):
         clone = type(self).__new__(type(self))
         clone.definition = copy.deepcopy(self.definition)
-        clone.glyphs = copy.deepcopy(self.glyphs)
+        clone.glyphs = self.glyphs.copy()
         clone.glyph_extents = copy.deepcopy(self.glyph_extents)
         return clone
 
@@ -60,7 +62,13 @@ class Character:
 
         for glyph, glyph_extent in zip(self.glyphs, self.glyph_extents):
             glyph_canvas = glyph.draw(extent = glyph_extent)
-            character_canvas.paste(glyph_canvas, (int(width * glyph_extent[0][0]), int(height * glyph_extent[0][1])))
+            character_canvas.alpha_composite(
+                glyph_canvas,
+                dest=(
+                    int(width * glyph_extent[0][0]),
+                    int(height * glyph_extent[0][1]),
+                ),
+            )
 
         return character_canvas
 

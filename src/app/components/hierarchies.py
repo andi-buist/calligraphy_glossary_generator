@@ -1,5 +1,4 @@
 import os
-import copy
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
@@ -8,8 +7,7 @@ from bidict import bidict
 import secrets
 
 from src.app.components.session import AppSession
-from src.symbols.characters import CHARACTER_TYPES, Character, Glyph
-from src.symbols.strokes import CurveProfile, BrushStroke
+from src.symbols.characters import CHARACTER_TYPES, Character
 
 TREEVIEW_ICONS_FP="src/app/icons"
 
@@ -22,146 +20,107 @@ def build_treeview_icons(parent: tk.Misc):
 
     return treeview_icons
 
-class StrokeHierarchy(tk.Frame):
+class GlyphHierarchy(tk.Frame):
     def __init__(self, parent, session: AppSession):
         self.session: AppSession=session
-        self.treeview_icons: dict[str, ImageTk.PhotoImage]=build_treeview_icons(self)
-
-        self.selected_stroke_idx:int=None
-
-        self.stroke_tree_ids: bidict[int, str]=bidict({}) # bidict so we can lookup {hash <-> tree_id}
-
         super().__init__(parent)
 
-        self.dictionary_treeview=ttk.Treeview(self, show="tree")
-        self.dictionary_treeview.pack(expand=True, fill="both")
-        self.dictionary_treeview.bind("<ButtonPress-1>", self.drag_stroke_item_start)
-        self.dictionary_treeview.bind("<ButtonRelease-1>", self.drag_stroke_item_end)
-        self.dictionary_treeview.bind("<ButtonPress-3>", self.remove_stroke)
+        self.glyph_detail_var = tk.StringVar()
+        detail_row = tk.Frame(self)
+        detail_row.pack(fill="x", pady=4)
+        tk.Label(detail_row, text="Name:").pack(side="left")
+        self.glyph_detail_entry = ttk.Entry(
+            detail_row,
+            textvariable=self.glyph_detail_var,
+        )
+        self.glyph_detail_entry.pack(side="left", fill="x", expand=True)
+        self.glyph_detail_entry.bind("<Return>", self.save_glyph_detail)
+        self.glyph_detail_entry.bind("<FocusOut>", self.save_glyph_detail)
+
+        self.treeview = ttk.Treeview(self, show="tree")
+        self.treeview.pack(expand=True, fill="both")
+        self.treeview.bind("<<TreeviewSelect>>", self.select_tree_item)
+        self.tree_id_to_glyph_idx: dict[str, int] = {}
+        self.tree_id_to_stroke_idx: dict[str, tuple[int, int]] = {}
 
         self.refresh()
 
     def refresh(self):
         """
-        Constructs hierarchy of strokes in accordance with `self.session.character_stroke_parentage`.
+        Shows the active character's glyph instances and their contained strokes.
         """
-        # 1. Clear the treeview --------------------------------
-        tv: ttk.Treeview=self.dictionary_treeview
+        tv: ttk.Treeview = self.treeview
         tv.delete(*tv.get_children())
-        self.stroke_tree_ids=bidict({})
+        self.tree_id_to_glyph_idx.clear()
+        self.tree_id_to_stroke_idx.clear()
 
-        tv.tag_configure('heading', image=self.treeview_icons["numpage"])
-        tv.tag_configure('anchor', image=self.treeview_icons["anchor"])
-        tv.tag_configure('selected', background="#b2cdec", image=self.treeview_icons["paint"])
+        glyph_hash_by_identity = {
+            id(glyph): glyph_hash
+            for glyph_hash, glyph in self.session.glyph_glossary_data.items()
+        }
+        tv.tag_configure("named-glyph", font=("TkDefaultFont", 9, "italic"))
+        for glyph_idx, glyph in enumerate(self.session.active_character.glyphs):
+            glyph_hash = glyph_hash_by_identity[id(glyph)]
+            glyph_item = tv.insert(
+                "",
+                tk.END,
+                text=(
+                    f"Glyph '{glyph.detail}'"
+                    if glyph.detail is not None
+                    else f"Glyph {glyph_hash}"
+                ),
+                open=True,
+                tags=tuple(
+                    tag
+                    for tag, enabled in (
+                        ("selected", glyph_idx == self.session.active_glyph_idx),
+                        ("named-glyph", glyph.detail is not None),
+                    )
+                    if enabled
+                ),
+            )
+            self.tree_id_to_glyph_idx[glyph_item] = glyph_idx
+            for stroke_idx in range(len(glyph.strokes)):
+                stroke_item = tv.insert(
+                    glyph_item,
+                    tk.END,
+                    text=f"Stroke {stroke_idx + 1}",
+                    tags=(
+                        ("selected",)
+                        if glyph_idx == self.session.active_glyph_idx
+                        and stroke_idx == self.session.active_stroke_idx
+                        else ()
+                    ),
+                )
+                self.tree_id_to_stroke_idx[stroke_item] = (glyph_idx, stroke_idx)
+        self.glyph_detail_var.set(self.session.active_glyph.detail or "")
+        tv.tag_configure("selected", background="#b2cdec")
 
-        self.tree_root_id=tv.insert("",
-                                    tk.END,
-                                    text=f"root",
-                                    open=True,
-                                    tags=('heading',)
-                                    )
-
-        # 3. add the character items
-        character_parentage=self.session.character_glossary_stroke_parentage_data[self.session.character_hash]
-        all_parents=character_parentage.keys()
-        all_children=[l1 for l0 in character_parentage.values() for l1 in l0]
-        for idx, item in enumerate(self.session.character_stroke_control_points):
-            if idx in all_parents:
-                row_tags = ('anchor','selected') if idx == self.session.current_stroke_idx else ('anchor','unselected')
-                parent_tree_id=tv.insert(self.tree_root_id,
-                                tk.END,
-                                text=f"{idx}",
-                                open=True,
-                                tags=row_tags
-                                )
-                self.stroke_tree_ids[idx]=parent_tree_id
-                for cidx in character_parentage[idx]:
-                    row_tags = ('selected',) if cidx == self.session.current_stroke_idx else ('unselected',)
-                    child_tree_id=tv.insert(parent_tree_id,
-                                    tk.END,
-                                    text=f"{cidx}",
-                                    open=True,
-                                    tags=row_tags
-                                    )
-                    self.stroke_tree_ids[cidx]=child_tree_id
-            elif idx not in all_children:
-                row_tags = ('selected',) if idx == self.session.current_stroke_idx else ('unselected',)
-
-                tree_id=tv.insert(self.tree_root_id,
-                                tk.END,
-                                text=f"{idx}",
-                                tags=row_tags
-                                )
-                self.stroke_tree_ids[idx]=tree_id
-
-        if self.session.current_stroke_idx in self.stroke_tree_ids:
-            tv.see(item=self.stroke_tree_ids[self.session.current_stroke_idx])
-
-    def drag_stroke_item_start(self, event: tk.Event):
-        tv: ttk.Treeview=self.dictionary_treeview
-        item=tv.identify("item", event.x, event.y)
-        idx=self.stroke_tree_ids.inverse.get(item)
-        if idx is not None:
-            self.selected_stroke_idx=idx
-
-    def drag_stroke_item_end(self, event: tk.Event):
-        tv: ttk.Treeview=self.dictionary_treeview
-        item=tv.identify("item", event.x, event.y)
-        idx=self.stroke_tree_ids.inverse.get(item)
-        if idx is not None:
-            if idx == self.selected_stroke_idx:
-                self.session.select_stroke(idx)
-            else:
-                self.parent_stroke(self.selected_stroke_idx, idx)
-        elif item == self.tree_root_id:
-            self.unparent_stroke(self.selected_stroke_idx)
-
-    def remove_stroke(self, event: tk.Event):
-        tv: ttk.Treeview=self.dictionary_treeview
-        item=tv.identify("item", event.x, event.y)
-        idx=self.stroke_tree_ids.inverse.get(item)
-        if idx is not None and len(self.session.active_stroke_source_control_points) > 1:
-            self.session.character_stroke_control_points.pop(idx)
-            self.session.active_stroke_source_control_points.pop(idx)
-            self.session.character_stroke_profile_control_points.pop(idx)
-            self.session.character_stroke_profile_bounds_vars.pop(idx)
-            self.session.stroke_changed()
-
-    def parent_stroke(self, child_stroke_idx: int, parent_stroke_idx: int):
-        current_character_parentage: dict[int, list[int]]=self.session.character_glossary_stroke_parentage_data[self.session.character_hash].copy()
-
-        all_parents = current_character_parentage.keys()
-        all_children = [l1 for l0 in current_character_parentage.values() for l1 in l0]
-        if child_stroke_idx in all_parents:
-            print(f"Cannot make a parent the child of another! Remove its children first if you want to do this.")
-        elif parent_stroke_idx in all_children:
-            print(f"Cannot make a child the parent of another! Remove its parent first if you want to do this.")
-        else:
-            # doesn't need to be a catch case for same -> same, as we unparent first anyway
-            self.unparent_stroke(child_stroke_idx)
-
-            parent_list = current_character_parentage.get(parent_stroke_idx,[])
-            parent_list.append(child_stroke_idx)
-            self.session.character_glossary_stroke_parentage_data[self.session.character_hash][parent_stroke_idx] = sorted(parent_list)
-
-            print(f"Added child stroke {child_stroke_idx} to parent stroke {parent_stroke_idx}")
-            self.refresh()
-
-    def unparent_stroke(self, child_stroke_idx: int):
-        current_character_parentage: dict[int, list[int]]=self.session.character_glossary_stroke_parentage_data[self.session.character_hash].copy()
-
-        tmp_dict = {}
-        for k,v in current_character_parentage.items():
-            if child_stroke_idx in v:
-                _ = v.pop(v.index(child_stroke_idx))
-                print(f"Removed child stroke {child_stroke_idx} from parent stroke {k}")
-
-            if len(v) > 0:
-                tmp_dict[k] = v
-
-        # assign a rebuilt dict, minus any 0-length list items
-        self.session.character_glossary_stroke_parentage_data[self.session.character_hash] = tmp_dict
+    def save_glyph_detail(self, _event: tk.Event | None = None):
+        detail = self.glyph_detail_var.get().strip()
+        self.session.active_glyph.detail = detail or None
         self.refresh()
+
+    def select_tree_item(self, _event: tk.Event):
+        selection = self.treeview.selection()
+        if not selection:
+            return
+        item = selection[0]
+        if item in self.tree_id_to_stroke_idx:
+            glyph_idx, stroke_idx = self.tree_id_to_stroke_idx[item]
+            self.session.select_glyph(
+                glyph_idx,
+                stroke_idx=(
+                    stroke_idx
+                    if self.session.current_page == "Glyph"
+                    else None
+                ),
+            )
+        elif item in self.tree_id_to_glyph_idx:
+            self.session.select_glyph(self.tree_id_to_glyph_idx[item])
+        else:
+            return
+        self.glyph_detail_var.set(self.session.active_glyph.detail or "")
 
 class CharacterHierarchy(tk.Frame):
     def __init__(self, parent, session: AppSession):
@@ -245,7 +204,7 @@ class CharacterHierarchy(tk.Frame):
         hash=self.tree_id_to_character_hash[item]
 
         if hash:
-            character_to_clone = copy.deepcopy(self.session.character_glossary_data[hash])
+            character_to_clone = self.session.character_glossary_data[hash].clone()
             self.add_entry(character_to_clone)
 
     # TODO: add and remove need partially bringing out to be session methods
@@ -266,6 +225,6 @@ class CharacterHierarchy(tk.Frame):
 
             character = Character(definition=[(focus_character_type,"example definition")])
 
-        self.session.character_glossary_data[hash]=copy.deepcopy(character)
+        self.session.character_glossary_data[hash]=character
         self.session.select_character(hash, save_current=True)
         self.session.export_glossary_json()
