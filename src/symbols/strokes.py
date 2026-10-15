@@ -101,8 +101,8 @@ class BrushStroke():
     the stroke length
     """
     def __init__(self,
-                 control_points: list[tuple[float, float]],
-                 profile: CurveProfile | None = None):
+                 control_points: list[tuple[float, float]] = [],
+                 profile: CurveProfile = None):
         if any(not 0.0 <= value <= 1.0 for point in control_points for value in point):
             raise ValueError('Brush stroke coordinates must be between 0.0 and 1.0')
 

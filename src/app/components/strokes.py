@@ -2,10 +2,12 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.app.components.session import AppSession
-from src.app.components.curves import CurveProfileWidget
-from src.symbols.strokes import CurveProfile
+
 
 class StrokeEditor(tk.Frame):
+    """
+    A grid editor for arranging Strokes into a Glyph
+    """
     def __init__(self, parent, session: AppSession):
         self.session = session
 
@@ -13,8 +15,6 @@ class StrokeEditor(tk.Frame):
         self.CELL_SIZE = session.CELL_SIZE
 
         super().__init__(parent, padx=4, pady=4, highlightthickness=1, highlightbackground="black")
-
-        self.show_stroke_options_var=tk.BooleanVar(self, False)
 
         self.refresh()
 
@@ -45,10 +45,10 @@ class StrokeEditor(tk.Frame):
         options.columnconfigure(3, weight=1)
         options.grid(column=0, row=1, sticky="EW")
 
-        tk.Button(options, command=lambda: self.change_stroke_idx(-1), text="\u2b9c").grid(
+        tk.Button(options, command=lambda: self.change_stroke_idx(max(0, self.session.current_stroke_idx - 1)), text="\u2b9c").grid(
             column=0, row=0, sticky="EW"
         )
-        tk.Button(options, command=lambda: self.change_stroke_idx(1), text="\u2b9e").grid(
+        tk.Button(options, command=lambda: self.change_stroke_idx(max(0, self.session.current_stroke_idx + 1)), text="\u2b9e").grid(
             column=3, row=0, sticky="EW"
         )
         tk.Label(
@@ -56,45 +56,6 @@ class StrokeEditor(tk.Frame):
             text=f"Character {self.session.character_hash} | "
                  f"Brushstroke {active_idx}",
         ).grid(column=1, row=0, columnspan=2)
-
-        if self.show_stroke_options_var.get() and has_active_stroke:
-            curve_profile=CurveProfile(
-                control_points=self.session.character_stroke_profile_control_points[active_idx],
-                bounds=tuple(
-                    float(var.get())
-                    for var in self.session.character_stroke_profile_bounds_vars[active_idx]
-                ),
-            )
-            curve_profile_widget=CurveProfileWidget(
-                options,
-                size=(128, 128),
-                curve_profile=curve_profile,
-                on_refresh=self.session.profile_changed,
-            )
-            curve_profile_widget.grid(column=1, row=2, columnspan=2)
-
-            left_bound, right_bound = self.session.character_stroke_profile_bounds_vars[active_idx]
-            ttk.Spinbox(
-                options,
-                textvariable=left_bound,
-                command=self.session.profile_changed,
-                to=16.0,
-                increment=0.1,
-            ).grid(column=1, row=3, sticky="E")
-            ttk.Spinbox(
-                options,
-                textvariable=right_bound,
-                command=self.session.profile_changed,
-                to=16.0,
-                increment=0.1,
-            ).grid(column=2, row=3, sticky="W")
-
-        tk.Checkbutton(
-            self,
-            variable=self.show_stroke_options_var,
-            text="Show stroke options",
-            command=lambda: self.session.refresh("stroke"),
-        ).grid(column=0, row=2, sticky="SW")
 
     def remove_empty_strokes(self):
         removed_idxs = []
@@ -117,9 +78,7 @@ class StrokeEditor(tk.Frame):
         if len(removed_idxs) > 0:
             print(f"Found empty strokes, removed {removed_idxs}")
 
-    def change_stroke_idx(self, value: int):
-        self.session.current_stroke_idx = max(0, self.session.current_stroke_idx)
-        new_idx = self.session.current_stroke_idx + value
+    def change_stroke_idx(self, new_idx: int):
         if new_idx < 0:
             return
         if new_idx >= len(self.session.character_stroke_control_points):
