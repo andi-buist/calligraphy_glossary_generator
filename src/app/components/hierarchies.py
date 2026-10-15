@@ -8,8 +8,8 @@ from bidict import bidict
 import secrets
 
 from src.app.components.session import AppSession
-from src.symbols.characters import CHARACTER_TYPES
-from src.symbols.strokes import CurveProfile
+from src.symbols.characters import CHARACTER_TYPES, Character, Glyph
+from src.symbols.strokes import CurveProfile, BrushStroke
 
 TREEVIEW_ICONS_FP="src/app/icons"
 
@@ -211,10 +211,9 @@ class CharacterHierarchy(tk.Frame):
 
         # 3. add the character items
         for hash, item in self.session.character_glossary_data.items():
-            char=self.session.json_to_character(item)
-            row_tags = ('selected',) if hash == self.session.character_hash else ('unselected',)
+            row_tags = ('selected',) if hash == self.session.active_character_hash else ('unselected',)
 
-            for char_type, char_def in char.definition:
+            for char_type, char_def in item.definition:
                 tree_id=tv.insert(self.character_type_tree_ids[char_type],
                                     tk.END,
                                     text=f"{hash}",
@@ -250,7 +249,7 @@ class CharacterHierarchy(tk.Frame):
             self.add_entry(character_to_clone)
 
     # TODO: add and remove need partially bringing out to be session methods
-    def add_entry(self, character_template: dict | None = None):
+    def add_entry(self, character: Character = None):
         tv: ttk.Treeview=self.dictionary_treeview
         hash: str=secrets.token_hex(4)
 
@@ -258,21 +257,15 @@ class CharacterHierarchy(tk.Frame):
         while hash in self.session.character_glossary_data.keys():
             hash=secrets.token_hex(4)
 
-        if character_template is None:
+        if character is None:
             # if the user has a type selected, new entry should be placed here
             # otherwise, go with the active-character's type
             focus_character_type = self.character_type_tree_ids.inverse.get(tv.focus(), None)
             if focus_character_type is None:
                     focus_character_type = typing.get_args(CHARACTER_TYPES)[0]
 
-            character_template: dict={
-                "definition": [(focus_character_type,"example definition")],
-                "stroke_control_points": [[[0.5, 0.0], [0.5, 1.0]]],
-                "stroke_profile_control_points":[CurveProfile.REALISTIC.copy().control_points],
-                "stroke_profile_bounds": [CurveProfile.REALISTIC.copy().bounds]
-                }
+            character = Character(definition=[(focus_character_type,"example definition")])
 
-        self.session.character_glossary_data[hash]=copy.deepcopy(character_template)
-        self.session.character_glossary_stroke_parentage_data[hash]={}
+        self.session.character_glossary_data[hash]=copy.deepcopy(character)
         self.session.select_character(hash, save_current=True)
         self.session.export_glossary_json()

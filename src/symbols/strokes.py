@@ -159,60 +159,6 @@ class BrushStroke():
                         fill=(0,0,0,255))
         return active_canvas
 
-class BrushStrokeGroup(list):
-    """
-    A helper class to extend the base `list` to specifically contain a parent-child
-    `BrushStroke` relationship
-    """
-    def __init__(
-            self,
-            parent: BrushStroke,
-            children: list[BrushStroke | BrushStrokeGroup] | BrushStrokeGroup,
-            *,
-            scale_method: Literal["inherit", "combine"] = "inherit"
-    ):
-        if not isinstance(parent, BrushStroke):
-            raise TypeError("BrushStrokeGroup parent must be a BrushStroke")
-        if isinstance(children, BrushStrokeGroup):
-            children = [children]
-        elif not isinstance(children, list):
-            raise TypeError("BrushStrokeGroup children must be a list or BrushStrokeGroup")
-        if any(not isinstance(child, (BrushStroke, BrushStrokeGroup)) for child in children):
-            raise TypeError("BrushStrokeGroup children must be BrushStroke or BrushStrokeGroup objects")
-        if scale_method not in ("inherit", "combine"):
-            raise ValueError("scale_method must be 'inherit' or 'combine'")
-
-        super().__init__([parent, *children])
-        self.scale_method = scale_method
-
-
-StrokeCollection = BrushStroke | BrushStrokeGroup | list[BrushStroke | BrushStrokeGroup]
-
 def map_unit_coords_to_margined_canvas(coords: tuple[float, float]) -> tuple[float, float]:
     drawable_scale = 1.0 - 2.0 * GLYPH_MARGIN
     return tuple(GLYPH_MARGIN + coord * drawable_scale for coord in coords)
-
-def flatten_nested_brushstrokes(strokes: StrokeCollection) -> list[BrushStroke]:
-    def flatten_stroke_tree(stroke: BrushStroke | BrushStrokeGroup) -> list[BrushStroke]:
-        if isinstance(stroke, BrushStroke):
-            return [stroke]
-
-        flattened: list[BrushStroke] = []
-        for child in stroke:
-            if not isinstance(child, (BrushStroke, BrushStrokeGroup)):
-                raise TypeError("BrushStrokeGroup children must be BrushStroke or BrushStrokeGroup objects")
-            flattened.extend(flatten_stroke_tree(child))
-        return flattened
-
-    if isinstance(strokes, BrushStroke):
-        return [strokes]
-    if isinstance(strokes, (BrushStrokeGroup, list)):
-        flattened: list[BrushStroke] = []
-        for stroke in strokes:
-            if not isinstance(stroke, (BrushStroke, BrushStrokeGroup)):
-                if isinstance(strokes, BrushStrokeGroup):
-                    raise TypeError("BrushStrokeGroup children must be BrushStroke or BrushStrokeGroup objects")
-                raise TypeError("Stroke lists may contain only BrushStroke or BrushStrokeGroup objects")
-            flattened.extend(flatten_stroke_tree(stroke))
-        return flattened
-    raise TypeError("Strokes must be a BrushStroke, BrushStrokeGroup, or a list of those objects")

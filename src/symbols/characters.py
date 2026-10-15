@@ -3,7 +3,7 @@ from typing import Literal
 import copy
 import numpy as np
 
-from src.symbols.strokes import BrushStroke, BrushStrokeGroup, StrokeCollection, flatten_nested_brushstrokes, GLYPH_SIZE
+from src.symbols.strokes import BrushStroke, GLYPH_SIZE
 
 CHARACTER_TYPES = Literal["noun", 
                           "verb", 
@@ -20,46 +20,47 @@ CHARACTER_TYPES = Literal["noun",
 
 class Glyph:
     def __init__(self,
-                 strokes: StrokeCollection,
-                 extent: tuple[tuple[float,float], tuple[float,float]] = ((0.0,0.0),(1.0,1.0))):
+                 strokes: list[BrushStroke]):
         self.strokes = [strokes] if isinstance(strokes, BrushStroke) else strokes
-        self.extent = extent
 
-    def draw(self) -> Image.Image:
+    def draw(self, extent: tuple[tuple[float,float], tuple[float,float]] = ((0.0,0.0),(1.0,1.0))) -> Image.Image:
         """Draw a glyph image from the character strokes."""
-        subwidth = self.extent[1][0] - self.extent[0][0]
-        subheight = self.extent[1][1] - self.extent[0][1]
         width, height = (GLYPH_SIZE, GLYPH_SIZE)
+        subwidth = extent[1][0] - extent[0][0]
+        subheight = extent[1][1] - extent[0][1]
 
-        stroke_canvas = Image.new(mode="RGBA", size=(int(width * subwidth), int(height * subheight)), color=(255, 255, 255, 255))
-        glyph_canvas = Image.new(mode="RGBA", size=(width, height), color=(255, 255, 255, 255))
+        glyph_canvas = Image.new(mode="RGBA", size=(int(width * subwidth), int(height * subheight)), color=(255, 255, 255, 255))
 
-        for stroke in flatten_nested_brushstrokes(self.strokes):
-            stroke_canvas = stroke.draw(stroke_canvas)
+        for stroke in self.strokes:
+            glyph_canvas = stroke.draw(glyph_canvas)
 
-        glyph_canvas.paste(stroke_canvas, (int(width * self.extent[0][0]), int(height * self.extent[0][1])))
         return glyph_canvas
 
 class Character:
     def __init__(self,
                  definition: list[tuple[CHARACTER_TYPES, str]],
-                 glyphs: list[Glyph]):
+                 glyphs: list[Glyph]=[Glyph([BrushStroke([(0.5,0.0),(0.5,1.0)])])],
+                 glyph_extents: list[tuple[tuple[float,float], tuple[float,float]]]=[((0.0,0.0),(1.0,1.0))]):
         self.definition = definition
         self.glyphs = glyphs
+        self.glyph_extents = glyph_extents
 
     def clone(self):
         clone = type(self).__new__(type(self))
         clone.definition = copy.deepcopy(self.definition)
         clone.glyphs = copy.deepcopy(self.glyphs)
+        clone.glyph_extents = copy.deepcopy(self.glyph_extents)
         return clone
 
     def draw(self) -> Image.Image:
         """Draw a glyph image from the character strokes."""
-        character_canvas = Image.new(mode="RGBA", size=(GLYPH_SIZE, GLYPH_SIZE), color=(255, 255, 255, 255))
+        width, height = (GLYPH_SIZE, GLYPH_SIZE)
 
-        for glyph in self.glyphs:
-            glyph_canvas = glyph.draw()
-            character_canvas.paste(glyph_canvas)
+        character_canvas = Image.new(mode="RGBA", size=(width, height), color=(255, 255, 255, 255))
+
+        for glyph, glyph_extent in zip(self.glyphs, self.glyph_extents):
+            glyph_canvas = glyph.draw(extent = glyph_extent)
+            character_canvas.paste(glyph_canvas, (int(width * glyph_extent[0][0]), int(height * glyph_extent[0][1])))
 
         return character_canvas
 
@@ -75,7 +76,7 @@ class CompoundCharacter(Character):
     def generate_glyph(self) -> Image.Image:
         """Draw a glyph image by combining the source characters."""
         def draw_character(character: Character, canvas: Image, fill_extent:bool=True):
-            strokes=flatten_nested_brushstrokes(character.strokes)
+            strokes=character.strokes
 
             if strokes is not None and fill_extent:
                 scaled_strokes: list[BrushStroke]=[]
@@ -139,7 +140,7 @@ class CompoundCharacter(Character):
 
 def glyph_orientation(character: Character) -> Literal["horizontal", "vertical"]:
     hv_score = 0
-    for stroke_bbox in [np.asarray(stroke.bbox) for stroke in flatten_nested_brushstrokes(character.strokes)]:
+    for stroke_bbox in [np.asarray(stroke.bbox) for stroke in character.strokes]:
         bbox_range = (stroke_bbox[:, 0].max() - stroke_bbox[:, 0].min(),
                         stroke_bbox[:, 1].max() - stroke_bbox[:, 1].min())
         if bbox_range[0] > bbox_range[1]:

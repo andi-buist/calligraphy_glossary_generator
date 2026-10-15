@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
+from pprint import pprint
 
 from src.app.components.session import AppSession
 from src.app.components.hierarchies import StrokeHierarchy, CharacterHierarchy
@@ -63,8 +64,8 @@ class CharacterEditor(tk.Frame):
         self.character_definitions = CharacterDefinitions(self.left_pane, self.session)
         self.character_definitions.pack(fill="both", expand=True)
 
-        self.stroke_editor = StrokeEditor(self, self.session)
-        self.stroke_editor.grid(column=1, row=0, sticky="NSEW", padx=12)
+        # self.stroke_editor = StrokeEditor(self, self.session)
+        # self.stroke_editor.grid(column=1, row=0, sticky="NSEW", padx=12)
 
         self.right_pane=tk.Frame(
             self,
@@ -76,8 +77,8 @@ class CharacterEditor(tk.Frame):
         self.right_pane.columnconfigure(0, weight=1)
         self.right_pane.grid(column=2, row=0, sticky="NSEW", padx=12)
 
-        self.stroke_hierarchy = StrokeHierarchy(self.right_pane, self.session)
-        self.stroke_hierarchy.pack(expand=True, fill="both")
+        # self.stroke_hierarchy = StrokeHierarchy(self.right_pane, self.session)
+        # self.stroke_hierarchy.pack(expand=True, fill="both")
         self.character_preview = CharacterPreview(self.right_pane, self.session)
         self.character_preview.pack(fill="both", pady=8)
 
@@ -98,8 +99,8 @@ class CharacterEditor(tk.Frame):
                 if change in ("selection", "all"):
                     self._rebuild_character_fields()
                     self.character_hierarchy.refresh()
-                self.stroke_editor.refresh()
-                self.stroke_hierarchy.refresh()
+                #self.stroke_editor.refresh()
+                #self.stroke_hierarchy.refresh()
                 self.character_preview.refresh()
 
 class CompoundEditor(tk.Frame):

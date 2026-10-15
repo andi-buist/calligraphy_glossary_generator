@@ -3,7 +3,7 @@ from tkinter import messagebox
 import typing
 
 from src.symbols.characters import Glyph, Character
-from src.symbols.strokes import CurveProfile, BrushStroke, StrokeCollection
+from src.symbols.strokes import CurveProfile, BrushStroke
 from src.dictionary.data import import_characters_from_json, export_characters_to_json
 
 class AppSession:
@@ -29,16 +29,16 @@ class AppSession:
         self.active_character_glyph_extents: list[tuple[tuple[float,float],tuple[float,float]]]=[] # the extent of each Glyph in the Character
 
         # Relevant to current Glyph =========
-        self.active_glyph_hash: str=""
+        self.active_glyph_idx: int=0
+        self.active_glyph_strokes: list[BrushStroke]
 
         # Relevant to current BrushStroke ===
         self.active_stroke_idx: int=0
-        self.active_glyph_strokes: list[BrushStroke]
 
         # Setup -----------------------------
-        first_hash=next(iter(self.character_glossary_data))
-        self.active_character_hash=first_hash
-        self.character_definition_to_editor(self.character_glossary_data[first_hash])
+        first_character_hash=next(iter(self.character_glossary_data))
+        self.active_character_hash=first_character_hash
+        self.character_object_to_editor(self.character_glossary_data[first_character_hash])
 
     def refresh(self, change: str = "all"):
         if len(self.on_change) > 0:
@@ -77,7 +77,7 @@ class AppSession:
                 self.commit_active_character_to_memory()
             
             self.active_character_hash=hash
-            self.character_definition_to_editor(
+            self.character_object_to_editor(
                 self.character_glossary_data[hash]
             )
             self.refresh("selection")
@@ -138,46 +138,31 @@ class AppSession:
         self.commit_active_character_to_memory()
         self.refresh("metadata")
 
-    def _get_normalized_stroke_control_points(self, idx: int) -> list[tuple[float,float]]:
+    def scale_from_grid(self, path: list[tuple[int,int]]) -> list[tuple[float,float]]:
         """
-        Converts the grid-index integer tuples to 0-1 coordinate-grid float tuples.
+        Converts stroke from grid-index integer tuples to 0-1 coordinate-grid float tuples.
         """
-        grid_path = self.character_stroke_control_points[idx]
-        source_path = self.active_stroke_source_control_points[idx]
         grid_max = self.GRID_BREAKS - 1
+        return [(x / grid_max, y / grid_max) for x, y in path]
 
-        if source_path is not None and len(source_path) == len(grid_path):
-            if all(
-                (int(x * grid_max), int(y * grid_max)) == point
-                for point, (x, y) in zip(grid_path, source_path)
-            ):
-                return source_path
+    def scale_to_grid(self, path: list[tuple[float,float]]) -> list[tuple[int,int]]:
+        """
+        Converts stroke 0-1 coordinate-grid float tuples to grid-index integer tuples.
+        """
+        grid_max = self.GRID_BREAKS - 1
+        return [(int(x * grid_max), int(y * grid_max)) for x,y in path]
 
-        return [(x / grid_max, y / grid_max) for x, y in grid_path]
-
-    def character_definition_to_editor(self, character: Character) -> None:
+    def character_object_to_editor(self, character: Character) -> None:
         """
         Converts a `Character` into the editor setup so it can be edited.
         """
-        decomposed_strokes: list[list[tuple[int,int]]]=[]
-        decomposed_source_control_points: list[list[tuple[float,float]]]=[]
-        decomposed_curve_profile_control_points: list[list[tuple[float,float]]]=[]
-        decomposed_curve_profile_bounds: list[tuple[float,float]]=[]
-        for stroke in character.strokes:
-            grid_scaled_coord_path=[(int(x * (self.GRID_BREAKS - 1)), int(y * (self.GRID_BREAKS - 1))) for x,y in stroke.control_points]
-            decomposed_strokes.append(grid_scaled_coord_path)
-            decomposed_source_control_points.append(list(stroke.control_points))
-            decomposed_curve_profile_control_points.append(stroke.profile.control_points.copy())
-            decomposed_curve_profile_bounds.append(stroke.profile.bounds)
+        self.active_character_glyphs = character.glyphs
+        self.active_character_glyph_extents = character.glyph_extents
 
-        self.current_stroke_idx=0
-        self.character_stroke_control_points=decomposed_strokes
-        self.active_stroke_source_control_points=decomposed_source_control_points
-        self.character_stroke_profile_control_points=decomposed_curve_profile_control_points
-        self.character_stroke_profile_bounds_vars=[
-            (tk.StringVar(self.master, l), tk.StringVar(self.master, r))
-            for l,r in decomposed_curve_profile_bounds
-        ]
+        self.active_glyph_idx=0
+        self.active_glyph_strokes=character.glyphs[0].strokes
+
+        self.active_stroke_idx=0
 
         self.active_character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[
             (tk.StringVar(self.master, t), tk.StringVar(self.master, d)) for t,d in character.definition
@@ -198,23 +183,3 @@ class AppSession:
 
         # for each locally tracked variable, assign to the working glossary
         item.definition = [(t.get(), d.get()) for t,d in self.active_character_defs_vars]
-
-        active_strokes = []
-        character_stroke_profile_control_points = []
-        active_stroke_profile_bounds = []
-        for idx, path in enumerate(self.character_stroke_control_points):
-            if not path:
-                continue
-
-            active_strokes.append(self._get_normalized_stroke_control_points(idx))
-            character_stroke_profile_control_points.append(
-                self.character_stroke_profile_control_points[idx]
-            )
-            active_stroke_profile_bounds.append(
-                (float(self.character_stroke_profile_bounds_vars[idx][0].get()),
-                    float(self.character_stroke_profile_bounds_vars[idx][1].get()))
-            )
-
-        item["stroke_control_points"] = active_strokes
-        item["stroke_profile_control_points"] = character_stroke_profile_control_points
-        item["stroke_profile_bounds"] = active_stroke_profile_bounds
