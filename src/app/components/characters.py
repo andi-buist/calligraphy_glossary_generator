@@ -81,26 +81,26 @@ class CharacterPreview(tk.Frame):
         super().__init__(parent)
         self.columnconfigure(0, weight=1)
 
+        tk.Label(self, text="Rendered Character").grid(column=0, row=0, sticky="NEW")
+        self.image_label=tk.Label(
+            self,
+            image="",
+            highlightthickness=1,
+            highlightbackground="black",
+        )
+        self.image_label.grid(column=0, row=1)
+
+        self.similarity_score_label=tk.Label(self, text="")
+        self.similarity_score_label.grid(column=0, row=2)
+
         self.refresh()
 
     def refresh(self):
-        for child in self.winfo_children():
-            child.destroy()
-
         self.refresh_active_character_image_cache()
 
         if self.character_object_cache is not None:
-            tk.Label(self, text="Rendered Glyph").grid(column=0, row=0, sticky="NEW")
-            image_label=tk.Label(
-                self,
-                image=self.character_object_cache[1],
-                highlightthickness=1,
-                highlightbackground="black",
-            )
-            image_label.grid(column=0, row=1)
+            self.image_label.config(image=self.character_object_cache[1])
 
-            self.similarity_score_label=tk.Label(self, text="")
-            self.similarity_score_label.grid(column=0, row=2)
             t=Thread(target=self.get_similarity_scores, daemon=True)
             t.start()
 
