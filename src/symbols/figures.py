@@ -1,10 +1,11 @@
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 import numpy as np
 import textwrap
 
 from src.symbols import radicals
-from src.symbols.characters.base import *
+from src.symbols.characters import *
 
 def _row_col(n: int):
     """
@@ -13,7 +14,7 @@ def _row_col(n: int):
     return (int(np.ceil(n / np.ceil(np.sqrt(n)))), int(np.ceil(np.sqrt(n))))
 
 # can't be statically-typed due to circular imports :/ - list[Character]
-def character_sheet(characters: list[Character]):
+def character_sheet(characters: list[Character]) -> Figure:
     def _add_character(character: Character, ax: plt.Axes, titles: bool = True, show_masks: bool = False):
             glyph_width, glyph_height = character.glyph.size
 

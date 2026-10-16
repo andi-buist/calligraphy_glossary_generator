@@ -1,72 +1,66 @@
-import os
 import tkinter as tk
-from tkinter import messagebox, ttk
-from PIL import Image, ImageTk
+from tkinter import messagebox
 import typing
+import secrets
 
-from src.symbols.characters.base import Character
-from src.symbols.strokes import CurveProfile, BrushStroke, StrokeCollection
-from src.dictionary.data import import_glossary_json, export_glossary_json
+from src.symbols.characters import Glyph, Character
+from src.symbols.strokes import BrushStroke
+from src.dictionary.data import (
+    export_characters_and_glyphs_to_json,
+    import_glyphs_from_json,
+    import_characters_from_json,
+)
 
-class CharacterEditorSession:
+class AppSession:
     GRID_BREAKS = 15
     CELL_SIZE = 36
     CANVAS_SIZE = GRID_BREAKS * CELL_SIZE
 
     def __init__(self, master: tk.Misc):
         self.master: tk.Misc=master
-        self.on_change: typing.Callable[[str], None] | None = None
+        self.on_change: list[typing.Callable[[str], None]]=[]
 
         # Globally relevant =================
-        self.character_glossary_data: dict={}
-        self.character_glossary_stroke_parentage_data: dict[str,dict[int,list[int]]]={}
-        self.import_glossary_json()
-
-        # Relevant to current character =====
-        self.current_stroke_idx: int=0
-
-        self.character_hash: str=""
-        self.character_stroke_control_points: list[list[tuple[int,int]]]=[]
-        self.character_stroke_profile_control_points: list[list[tuple[float,float]]]=[]
-        self.character_stroke_profile_bounds_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
-
-        self.character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
-        self.character_object_cache: tuple[Character, ImageTk.PhotoImage] | None = None # must cache the photoimage too, as otherwise it gets GC'd
-
-        self.show_stroke_options_var=tk.BooleanVar(master, False)
+        self.glyph_glossary_data: dict[str, Glyph] = import_glyphs_from_json()
+        self.character_glossary_data: dict[str, Character] = (
+            import_characters_from_json(self.glyph_glossary_data)
+        )
 
         if not self.character_glossary_data:
             raise ValueError("The glossary must contain at least one character.")
 
-        first_hash=next(iter(self.character_glossary_data))
-        self.character_hash=first_hash
-        self.character_definition_to_editor(self.json_to_character(self.character_glossary_data[first_hash]))
-        self.rebuild_active_character_image_cache()
+        # Relevant to current Character =====
+        self.active_character_hash: str=""
+        self.active_character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
+        self.current_page: str = "Character"
+        # Relevant to current Glyph =========
+        self.active_glyph_idx: int=0
+
+        # Relevant to current BrushStroke ===
+        self.active_stroke_idx: int=0
+
+        # Setup -----------------------------
+        first_character_hash=next(iter(self.character_glossary_data))
+        self.active_character_hash=first_character_hash
+        self.character_object_to_editor(self.character_glossary_data[first_character_hash])
 
     def refresh(self, change: str = "all"):
-        if self.on_change is not None:
-            #print(f"Refresh @{change}")
-            self.on_change(change)
-
-    def import_glossary_json(self):
-        glossary_data, glossary_parentage_data = import_glossary_json()
-        self.character_glossary_data=glossary_data
-        self.character_glossary_stroke_parentage_data=glossary_parentage_data
+        if len(self.on_change) > 0:
+            for refresh_callable in self.on_change:
+                refresh_callable(change)
 
     def export_glossary_json(self):
+        """
+        Writes the JSON from the session glossary.
+        """
         self.commit_active_character_to_memory()
-        export_glossary_json(self.character_glossary_data, self.character_glossary_stroke_parentage_data)
+        for character in self.character_glossary_data.values():
+            self.register_character_glyphs(character)
+        export_characters_and_glyphs_to_json(
+            self.character_glossary_data,
+            self.glyph_glossary_data,
+        )
 
-    def select_stroke(self, idx: int):
-        """
-        Selects a stroke by its idx (if it exists)
-        """
-        if idx < len(self.character_stroke_control_points):
-            self.current_stroke_idx=idx
-            self.refresh("stroke")
-        else:
-            raise KeyError(f"{idx} is not a valid stroke index.")
-    
     def select_character(self, hash: str, save_current: bool = True):
         """
         Selects a character by its hash (if it exists)
@@ -74,16 +68,19 @@ class CharacterEditorSession:
         if hash in self.character_glossary_data:
             if save_current: # persist current changes, then move
                 self.commit_active_character_to_memory()
-            self.character_hash=hash
-            self.character_definition_to_editor(
-                self.json_to_character(self.character_glossary_data[hash])
+            
+            self.active_character_hash=hash
+            self.character_object_to_editor(
+                self.character_glossary_data[hash]
             )
-            self.rebuild_active_character_image_cache()
             self.refresh("selection")
         else:
             raise KeyError(f"{hash} is not a valid character hash.")
 
     def remove_character(self, hash: str):
+        """
+        Removes a Character from the internal glossary, selects the next available, then saves the glossary JSON.
+        """
         if hash not in self.character_glossary_data.keys():
             return
 
@@ -95,7 +92,7 @@ class CharacterEditorSession:
         
         if answer:
             self.commit_active_character_to_memory()
-            hashes=list(self.character_glossary_data)
+            hashes=list(self.character_glossary_data.keys())
 
             if len(hashes) <= 1:
                 messagebox.showwarning(
@@ -105,14 +102,13 @@ class CharacterEditorSession:
                 )
                 return
             
-            next_active_hash=self.character_hash
-            removing_active = hash == self.character_hash
+            next_active_hash=self.active_character_hash
+            removing_active = hash == self.active_character_hash
             if removing_active:
                 removed_idx=hashes.index(hash)
                 next_active_hash=hashes[removed_idx - 1] if removed_idx > 0 else hashes[removed_idx + 1]
     
             del self.character_glossary_data[hash]
-            del self.character_glossary_stroke_parentage_data[hash]
     
             if removing_active:
                 self.select_character(next_active_hash, save_current=False)
@@ -120,157 +116,178 @@ class CharacterEditorSession:
                 self.refresh("list")
             self.export_glossary_json()
 
-    def add_new_stroke_items(self):
-        self.character_stroke_control_points.append([])
-        self.active_stroke_source_control_points.append(None)
-        self.character_stroke_profile_control_points.append(CurveProfile.REALISTIC.copy().control_points)
-        self.character_stroke_profile_bounds_vars.append((
-            tk.StringVar(self.master, CurveProfile.REALISTIC.bounds[0]),
-            tk.StringVar(self.master, CurveProfile.REALISTIC.bounds[1]),
-        ))
+    @property
+    def active_character(self) -> Character:
+        return self.character_glossary_data[self.active_character_hash]
+
+    @property
+    def active_glyph(self) -> Glyph:
+        return self.active_character.glyphs[self.active_glyph_idx]
+
+    @property
+    def active_glyph_strokes(self) -> list[BrushStroke]:
+        return self.active_glyph.strokes
+
+    def register_character_glyphs(self, character: Character) -> None:
+        registered_ids = {id(glyph) for glyph in self.glyph_glossary_data.values()}
+        for glyph in character.glyphs:
+            if id(glyph) not in registered_ids:
+                self.glyph_glossary_data[self._new_glyph_hash()] = glyph
+                registered_ids.add(id(glyph))
+
+    def _new_glyph_hash(self) -> str:
+        glyph_hash = secrets.token_hex(8)
+
+        # quick check to ensure we don't overwrite an existing entry
+        while glyph_hash in self.glyph_glossary_data:
+            glyph_hash = secrets.token_hex(8)
+
+        return glyph_hash
+
+    def add_glyph_to_character(self, glyph_hash: str) -> None:
+        character = self.active_character
+        new_idx = len(character.glyphs)
+
+        glyph = self.glyph_glossary_data[glyph_hash]
+        character.glyphs.append(glyph)
+
+        character.glyph_extents.append(((0.0,0.0),(1.0,1.0)))
+        self.active_glyph_idx = new_idx
+        self.active_stroke_idx = 0
+        self.refresh("glyphs")
+
+    def create_glyph_for_character(self) -> str:
+        glyph_hash = self._new_glyph_hash()
+        self.glyph_glossary_data[glyph_hash] = Glyph([BrushStroke([(0.5,0.0),(0.5,1.0)])])
+        self.add_glyph_to_character(glyph_hash)
+        return glyph_hash
+
+    def remove_active_glyph_from_character(self) -> None:
+        character = self.active_character
+        if len(character.glyphs) <= 1:
+            raise ValueError("A character must contain at least one glyph.")
+        character.glyphs.pop(self.active_glyph_idx)
+        character.glyph_extents.pop(self.active_glyph_idx)
+        self.active_glyph_idx = min(self.active_glyph_idx, len(character.glyphs) - 1)
+        self.active_stroke_idx = 0
+        self.refresh("glyphs")
+
+    def add_stroke_point(self, point: tuple[float, float]) -> None:
+        strokes = self.active_glyph_strokes
+        if self.active_stroke_idx == len(strokes):
+            strokes.append(BrushStroke([point]))
+        else:
+            stroke = strokes[self.active_stroke_idx]
+            strokes[self.active_stroke_idx] = BrushStroke(
+                stroke.control_points + [point],
+                profile=stroke.profile,
+            )
+        self.refresh("stroke")
+
+    def remove_stroke_point(self, point: tuple[float, float]) -> None:
+        strokes = self.active_glyph_strokes
+        if self.active_stroke_idx >= len(strokes):
+            return
+
+        stroke = strokes[self.active_stroke_idx]
+        grid_max = self.GRID_BREAKS - 1
+        target = (round(point[0] * grid_max), round(point[1] * grid_max))
+        matching_idx = next(
+            (
+                idx for idx in range(len(stroke.control_points) - 1, -1, -1)
+                if tuple(round(value * grid_max) for value in stroke.control_points[idx]) == target
+            ),
+            None,
+        )
+        if matching_idx is None:
+            return
+
+        points = stroke.control_points.copy()
+        points.pop(matching_idx)
+        if points:
+            strokes[self.active_stroke_idx] = BrushStroke(
+                points,
+                profile=stroke.profile,
+            )
+        else:
+            strokes.pop(self.active_stroke_idx)
+            self.active_stroke_idx = min(self.active_stroke_idx, len(strokes))
+        self.refresh("stroke")
+
+    def remove_active_stroke(self) -> None:
+        strokes = self.active_glyph_strokes
+        if len(strokes) <= 1:
+            raise ValueError("A glyph must contain at least one stroke.")
+        if self.active_stroke_idx < len(strokes):
+            strokes.pop(self.active_stroke_idx)
+            self.active_stroke_idx = min(self.active_stroke_idx, len(strokes) - 1)
+            self.refresh("stroke")
+
+    def select_glyph(self, idx: int, stroke_idx: int | None = None) -> None:
+        if not 0 <= idx < len(self.active_character.glyphs):
+            raise IndexError(f"{idx} is not a valid glyph index.")
+        strokes = self.active_character.glyphs[idx].strokes
+        selected_stroke_idx = 0 if stroke_idx is None else stroke_idx
+        if not 0 <= selected_stroke_idx <= len(strokes):
+            raise IndexError(f"{selected_stroke_idx} is not a valid stroke index.")
+        self.active_glyph_idx = idx
+        self.active_stroke_idx = selected_stroke_idx
+        self.refresh("stroke" if stroke_idx is not None else "glyph-selection")
+
+    def select_stroke(self, idx: int) -> None:
+        if not 0 <= idx <= len(self.active_glyph_strokes):
+            raise IndexError(f"{idx} is not a valid stroke index.")
+        self.active_stroke_idx = idx
+        self.refresh("stroke")
 
     def stroke_changed(self):
-        self.rebuild_active_character_image_cache()
-        self.commit_active_character_to_memory()
         self.refresh("stroke")
 
     def profile_changed(self):
-        self.rebuild_active_character_image_cache()
-        self.commit_active_character_to_memory()
         self.refresh("preview")
 
     def update_treeview(self, *_):
         self.commit_active_character_to_memory()
         self.refresh("metadata")
 
-    def rebuild_active_character_image_cache(self):
+    def scale_from_grid(self, path: list[tuple[int,int]]) -> list[tuple[float,float]]:
         """
-        Sets `self.character_object_cache` to the `Character` object and `ImageTk.PhotoImage`, built from `self.character_stroke_control_points`.
+        Converts stroke from grid-index integer tuples to 0-1 coordinate-grid float tuples.
         """
-        def _internal_build_char() -> Character:
-            strokes=[]
-            for idx, control_points in enumerate(self.character_stroke_control_points):
-                if len(control_points) > 1:
-                    scaled_control_points=self._get_normalized_stroke_control_points(idx)
-                    strokes.append(BrushStroke(control_points=scaled_control_points,
-                                                profile=CurveProfile(control_points=self.character_stroke_profile_control_points[idx],
-                                                                    bounds=tuple(float(var.get()) for var in self.character_stroke_profile_bounds_vars[idx]))))
-
-            return Character(definition=[(x.get(),y.get()) for x,y in self.character_defs_vars],
-                             strokes=strokes)
-
-        if len(self.character_stroke_control_points) > 0:
-            sub_lengths_check=[len(el) > 1 for el in self.character_stroke_control_points]
-            if any(sub_lengths_check):
-                char_tmp=_internal_build_char()
-                self.character_object_cache=(char_tmp, ImageTk.PhotoImage(char_tmp.glyph))
-            else:
-                self.character_object_cache=None
-        else:
-            self.character_object_cache=None
-
-    def _get_normalized_stroke_control_points(self, idx: int) -> list[tuple[float,float]]:
-        grid_path = self.character_stroke_control_points[idx]
-        source_path = self.active_stroke_source_control_points[idx]
         grid_max = self.GRID_BREAKS - 1
+        return [(x / grid_max, y / grid_max) for x, y in path]
 
-        if source_path is not None and len(source_path) == len(grid_path):
-            if all(
-                (int(x * grid_max), int(y * grid_max)) == point
-                for point, (x, y) in zip(grid_path, source_path)
-            ):
-                return source_path
+    def scale_to_grid(self, path: list[tuple[float,float]]) -> list[tuple[int,int]]:
+        """
+        Converts stroke 0-1 coordinate-grid float tuples to grid-index integer tuples.
+        """
+        grid_max = self.GRID_BREAKS - 1
+        return [(int(x * grid_max), int(y * grid_max)) for x,y in path]
 
-        return [(x / grid_max, y / grid_max) for x, y in grid_path]
-
-    def character_definition_to_editor(self, character: Character) -> None:
+    def character_object_to_editor(self, character: Character) -> None:
         """
         Converts a `Character` into the editor setup so it can be edited.
         """
-        decomposed_strokes: list[list[tuple[int,int]]]=[]
-        decomposed_source_control_points: list[list[tuple[float,float]]]=[]
-        decomposed_curve_profile_control_points: list[list[tuple[float,float]]]=[]
-        decomposed_curve_profile_bounds: list[tuple[float,float]]=[]
-        for stroke in character.strokes:
-            grid_scaled_coord_path=[(int(x * (self.GRID_BREAKS - 1)), int(y * (self.GRID_BREAKS - 1))) for x,y in stroke.control_points]
-            decomposed_strokes.append(grid_scaled_coord_path)
-            decomposed_source_control_points.append(list(stroke.control_points))
-            decomposed_curve_profile_control_points.append(stroke.profile.control_points.copy())
-            decomposed_curve_profile_bounds.append(stroke.profile.bounds)
+        self.register_character_glyphs(character)
+        self.active_glyph_idx=0
+        self.active_stroke_idx=0
 
-        self.current_stroke_idx=0
-        self.character_stroke_control_points=decomposed_strokes
-        self.active_stroke_source_control_points=decomposed_source_control_points
-        self.character_stroke_profile_control_points=decomposed_curve_profile_control_points
-        self.character_stroke_profile_bounds_vars=[
-            (tk.StringVar(self.master, l), tk.StringVar(self.master, r))
-            for l,r in decomposed_curve_profile_bounds
-        ]
-
-        self.character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[
+        self.active_character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[
             (tk.StringVar(self.master, t), tk.StringVar(self.master, d)) for t,d in character.definition
         ]
-
-    def json_to_character(self, item: dict) -> Character:
-        """
-        Converts a glossary json item into a `Character`.
-        """
-        source_strokes: list[list[list]]=item.get("stroke_control_points")
-        source_profile_control_points=item.get("stroke_profile_control_points")
-        source_profile_bounds=item.get("stroke_profile_bounds")
-        if (source_profile_control_points is None) != (source_profile_bounds is None):
-            raise ValueError("Stroke profile control points and bounds must be provided together.")
-        if source_profile_control_points is not None and (
-            len(source_profile_control_points) != len(source_strokes)
-            or len(source_profile_bounds) != len(source_strokes)
-        ):
-            raise ValueError("Stroke profile data must match the number of strokes.")
-
-        strokes: StrokeCollection=[]
-        for idx, stroke_coords in enumerate(source_strokes):
-            profile = None
-            if source_profile_control_points is not None:
-                profile = CurveProfile(
-                    control_points=[tuple(point) for point in source_profile_control_points[idx]],
-                    bounds=tuple(source_profile_bounds[idx]),
-                )
-            strokes.append(BrushStroke(stroke_coords, profile))
-
-        return Character(item.get("definition"),
-                         strokes)
 
     def commit_active_character_to_memory(self):
         """
         Copies editor state to the active character's entry in `self.character_glossary_data`.
         """
-        if not self.character_hash:
+        if not self.active_character_hash:
             return
 
-        if self.character_hash not in self.character_glossary_data:
+        if self.active_character_hash not in self.character_glossary_data:
             return
 
         # get active entry in glossary
-        item = self.character_glossary_data[self.character_hash]
+        item = self.character_glossary_data[self.active_character_hash]
 
         # for each locally tracked variable, assign to the working glossary
-        item["definition"] = [(t.get(), d.get()) for t,d in self.character_defs_vars]
-
-        active_strokes = []
-        character_stroke_profile_control_points = []
-        active_stroke_profile_bounds = []
-        for idx, path in enumerate(self.character_stroke_control_points):
-            if not path:
-                continue
-
-            active_strokes.append(self._get_normalized_stroke_control_points(idx))
-            character_stroke_profile_control_points.append(
-                self.character_stroke_profile_control_points[idx]
-            )
-            active_stroke_profile_bounds.append(
-                (float(self.character_stroke_profile_bounds_vars[idx][0].get()),
-                    float(self.character_stroke_profile_bounds_vars[idx][1].get()))
-            )
-
-        item["stroke_control_points"] = active_strokes
-        item["stroke_profile_control_points"] = character_stroke_profile_control_points
-        item["stroke_profile_bounds"] = active_stroke_profile_bounds
+        item.definition = [(t.get(), d.get()) for t,d in self.active_character_defs_vars]

@@ -1,7 +1,7 @@
 from PIL import Image
 import numpy as np
 from src.symbols import strokes
-from src.symbols.characters.base import Character
+from src.symbols.characters import Character
 
 GLYPH_SIZE = strokes.GLYPH_SIZE
 
@@ -111,5 +111,4 @@ def rect_edge_patch_scaling(character: Character) -> Character:
             scale_tree(component)
 
     scaled_character.glyph = scaled_character.generate_glyph()
-    scaled_character.glyph_orientation = scaled_character._get_glyph_orientation()
     return scaled_character
