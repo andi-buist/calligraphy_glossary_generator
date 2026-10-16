@@ -37,8 +37,20 @@ class GlyphHierarchy(tk.Frame):
         self.glyph_detail_entry.bind("<Return>", self.save_glyph_detail)
         self.glyph_detail_entry.bind("<FocusOut>", self.save_glyph_detail)
 
-        self.treeview = ttk.Treeview(self, show="tree")
-        self.treeview.pack(expand=True, fill="both")
+        tree_frame = ttk.Frame(self)
+        tree_frame.pack(expand=True, fill="both")
+        tree_frame.rowconfigure(0, weight=1)
+        tree_frame.columnconfigure(0, weight=1)
+
+        self.treeview = ttk.Treeview(tree_frame, show="tree")
+        self.treeview.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(
+            tree_frame,
+            orient="vertical",
+            command=self.treeview.yview,
+        )
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.treeview.configure(yscrollcommand=scrollbar.set)
         self.treeview.bind("<<TreeviewSelect>>", self.select_tree_item)
         self.tree_id_to_glyph_idx: dict[str, int] = {}
         self.tree_id_to_stroke_idx: dict[str, tuple[int, int]] = {}
@@ -136,8 +148,24 @@ class CharacterHierarchy(tk.Frame):
 
         tk.Button(self, text="+ Add new entry", command=self.add_entry).pack(fill="x")
 
-        self.dictionary_treeview=ttk.Treeview(self, columns=("defs"), height=16)
-        self.dictionary_treeview.pack(fill="x")
+        tree_frame = ttk.Frame(self)
+        tree_frame.pack(fill="both", expand=True)
+        tree_frame.rowconfigure(0, weight=1)
+        tree_frame.columnconfigure(0, weight=1)
+
+        self.dictionary_treeview=ttk.Treeview(
+            tree_frame,
+            columns=("defs"),
+            height=16,
+        )
+        self.dictionary_treeview.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(
+            tree_frame,
+            orient="vertical",
+            command=self.dictionary_treeview.yview,
+        )
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.dictionary_treeview.configure(yscrollcommand=scrollbar.set)
         self.dictionary_treeview.bind("<ButtonPress-1>", self.leftclick_entry)
         self.dictionary_treeview.bind("<ButtonPress-2>", self.middleclick_entry)
 
@@ -210,11 +238,11 @@ class CharacterHierarchy(tk.Frame):
     # TODO: add and remove need partially bringing out to be session methods
     def add_entry(self, character: Character = None):
         tv: ttk.Treeview=self.dictionary_treeview
-        hash: str=secrets.token_hex(4)
+        hash: str=secrets.token_hex(8)
 
         # quick check to ensure we don't overwrite an existing entry
         while hash in self.session.character_glossary_data.keys():
-            hash=secrets.token_hex(4)
+            hash=secrets.token_hex(8)
 
         if character is None:
             # if the user has a type selected, new entry should be placed here

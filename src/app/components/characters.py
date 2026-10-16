@@ -14,8 +14,12 @@ class CharacterDefinitions(tk.Frame):
         self.session: AppSession=session
         self.columnconfigure(0, weight=1)
 
-        remove_character_button=tk.Button(self, text="Remove Character", command=lambda hash=self.session.active_character_hash: self.session.remove_character(hash))
-        remove_character_button.pack(fill="x", side="bottom")
+        self.remove_character_button = tk.Button(
+            self,
+            text="Remove Character",
+            command=self.remove_active_character,
+        )
+        self.remove_character_button.pack(fill="x", side="bottom")
 
         self.entries_frame = tk.Frame(self)
         self.entries_frame.columnconfigure(0, weight=1)
@@ -27,6 +31,9 @@ class CharacterDefinitions(tk.Frame):
         self.entries_frame.pack(fill="both", expand=True)
 
         self.refresh()
+
+    def remove_active_character(self):
+        self.session.remove_character(self.session.active_character_hash)
 
     def refresh(self):
         for child in self.entries_frame.winfo_children():

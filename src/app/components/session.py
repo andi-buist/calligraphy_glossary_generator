@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import typing
-import uuid
+import secrets
 
 from src.symbols.characters import Glyph, Character
 from src.symbols.strokes import BrushStroke
@@ -22,7 +22,9 @@ class AppSession:
 
         # Globally relevant =================
         self.glyph_glossary_data: dict[str, Glyph] = import_glyphs_from_json()
-        self.character_glossary_data: dict[str, Character]=import_characters_from_json(self.glyph_glossary_data)
+        self.character_glossary_data: dict[str, Character] = (
+            import_characters_from_json(self.glyph_glossary_data)
+        )
 
         if not self.character_glossary_data:
             raise ValueError("The glossary must contain at least one character.")
@@ -134,9 +136,12 @@ class AppSession:
                 registered_ids.add(id(glyph))
 
     def _new_glyph_hash(self) -> str:
-        glyph_hash = uuid.uuid4().hex
+        glyph_hash = secrets.token_hex(8)
+
+        # quick check to ensure we don't overwrite an existing entry
         while glyph_hash in self.glyph_glossary_data:
-            glyph_hash = uuid.uuid4().hex
+            glyph_hash = secrets.token_hex(8)
+
         return glyph_hash
 
     def add_glyph_to_character(self, glyph_hash: str) -> None:

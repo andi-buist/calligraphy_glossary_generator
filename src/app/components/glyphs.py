@@ -24,13 +24,10 @@ class GlyphEditor(tk.Frame):
 
         super().__init__(parent, padx=4, pady=4, highlightthickness=1, highlightbackground="black")
 
+        self._build_widgets()
         self.refresh()
 
-    def refresh(self):
-        selected_glyph_hash = self._selected_glyph_hash()
-        for child in self.winfo_children():
-            child.destroy()
-
+    def _build_widgets(self):
         self.columnconfigure(0, weight=1)
         self.canvas=tk.Canvas(
             self,
@@ -43,11 +40,39 @@ class GlyphEditor(tk.Frame):
         self.canvas.bind("<ButtonPress-1>", self.drag_extent_start)
         self.canvas.bind("<B1-Motion>", self.drag_extent_motion)
         self.canvas.bind("<ButtonRelease-1>", self.drag_extent_end)
-        self.draw_canvas()
 
         options = tk.Frame(self, pady=4)
         options.columnconfigure(0, weight=1)
         options.grid(column=0, row=1, sticky="EW")
+        self.character_glyph_label = tk.Label(options)
+        self.character_glyph_label.grid(
+            column=0, row=0, columnspan=5, sticky="EW", padx=4, pady=4
+        )
+
+        self.glyph_picker = ttk.Combobox(
+            options,
+            textvariable=self.glyph_hash_var,
+            values=(),
+            state="readonly",
+        )
+        self.glyph_picker.grid(column=0, row=1, sticky="EW", padx=4)
+        tk.Button(options, text="Add existing glyph", command=self.place_glyph).grid(
+            column=1, row=1, padx=4
+        )
+        tk.Button(options, text="New glyph", command=self.create_glyph).grid(
+            column=2, row=1, padx=4
+        )
+        self.remove_glyph_button = tk.Button(
+            options,
+            text="Remove from character",
+            command=self.remove_glyph,
+        )
+        self.remove_glyph_button.grid(column=3, row=1, padx=4)
+
+    def refresh(self):
+        selected_glyph_hash = self._selected_glyph_hash()
+        self.draw_canvas()
+
         glyph_hash_by_identity = {
             id(glyph): glyph_hash
             for glyph_hash, glyph in self.session.glyph_glossary_data.items()
@@ -59,10 +84,9 @@ class GlyphEditor(tk.Frame):
             if active_glyph.detail is not None
             else active_glyph_hash
         )
-        tk.Label(
-            options,
-            text=f"Character: {self.session.active_character_hash} | Glyph: {glyph_label}",
-        ).grid(column=0, row=0, columnspan=5, sticky="EW", padx=4, pady=4)
+        self.character_glyph_label.configure(
+            text=f"Character: {self.session.active_character_hash} | Glyph: {glyph_label}"
+        )
 
         self.glyph_picker_items = sorted(
             self.session.glyph_glossary_data.items(),
@@ -76,13 +100,7 @@ class GlyphEditor(tk.Frame):
             f"'{glyph.detail}'" if glyph.detail is not None else glyph_hash
             for glyph_hash, glyph in self.glyph_picker_items
         ]
-        self.glyph_picker = ttk.Combobox(
-            options,
-            textvariable=self.glyph_hash_var,
-            values=display_values,
-            state="readonly"
-        )
-        self.glyph_picker.grid(column=0, row=1, sticky="EW", padx=4)
+        self.glyph_picker.configure(values=display_values)
         if self.glyph_picker_items:
             selected_idx = next(
                 (
@@ -95,13 +113,13 @@ class GlyphEditor(tk.Frame):
             self.glyph_picker.current(selected_idx)
         else:
             self.glyph_hash_var.set("")
-        tk.Button(options, text="Add existing glyph", command=self.place_glyph).grid(column=1, row=1, padx=4)
-        tk.Button(options, text="New glyph", command=self.create_glyph).grid(column=2, row=1, padx=4)
-        tk.Button(options,
-                  text="Remove from character",
-                  command=self.remove_glyph,
-                  state="normal" if len(self.session.active_character.glyphs) > 1 else "disabled"
-                  ).grid(column=3, row=1, padx=4)
+        self.remove_glyph_button.configure(
+            state=(
+                "normal"
+                if len(self.session.active_character.glyphs) > 1
+                else "disabled"
+            )
+        )
 
     def _selected_glyph_hash(self) -> str | None:
         if self.glyph_picker is not None:

@@ -88,9 +88,7 @@ class CharacterEditor(tk.Frame):
         self.character_preview.pack(fill="both", pady=8)
 
     def _rebuild_character_fields(self):
-        self.character_definitions.destroy()
-        self.character_definitions = CharacterDefinitions(self.left_pane, self.session)
-        self.character_definitions.pack(fill="both", expand=True)
+        self.character_definitions.refresh()
 
     def update_current_page(self, _event: tk.Event | None = None):
         self.session.current_page = self.editors.tab(self.editors.select(), "text")

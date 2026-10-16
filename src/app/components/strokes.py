@@ -14,12 +14,10 @@ class StrokeEditor(tk.Frame):
 
         super().__init__(parent, padx=4, pady=4, highlightthickness=1, highlightbackground="black")
 
+        self._build_widgets()
         self.refresh()
 
-    def refresh(self):
-        for child in self.winfo_children():
-            child.destroy()
-
+    def _build_widgets(self):
         self.columnconfigure(0, weight=1)
         self.canvas=tk.Canvas(
             self,
@@ -31,16 +29,33 @@ class StrokeEditor(tk.Frame):
         self.canvas.grid(column=0, row=0, sticky="NS")
         self.canvas.bind("<ButtonPress-1>", self.leftclick_x_y)
         self.canvas.bind("<ButtonPress-3>", self.rightclick_x_y)
-        self.draw_canvas()
-
-        active_idx = self.session.active_stroke_idx
-        stroke_count = len(self.session.active_glyph_strokes)
 
         options = tk.Frame(self, pady=4)
         options.columnconfigure(0, weight=1)
         options.columnconfigure(1, weight=1)
         options.grid(column=0, row=1, sticky="EW")
+        self.glyph_stroke_label = tk.Label(options)
+        self.glyph_stroke_label.grid(
+            column=0, row=0, columnspan=2, sticky="W", padx=2, pady=(0, 4)
+        )
+        tk.Button(
+            options,
+            text="Add stroke",
+            command=lambda: self.session.select_stroke(
+                len(self.session.active_glyph_strokes)
+            ),
+        ).grid(column=0, row=1, sticky="EW", padx=4)
+        self.remove_stroke_button = tk.Button(
+            options,
+            text="Remove stroke",
+            command=self.session.remove_active_stroke,
+        )
+        self.remove_stroke_button.grid(column=1, row=1, sticky="EW", padx=4)
 
+    def refresh(self):
+        self.draw_canvas()
+        active_idx = self.session.active_stroke_idx
+        stroke_count = len(self.session.active_glyph_strokes)
         glyph_hash_by_identity = {
             id(glyph): glyph_hash
             for glyph_hash, glyph in self.session.glyph_glossary_data.items()
@@ -51,27 +66,17 @@ class StrokeEditor(tk.Frame):
             if active_glyph.detail is not None
             else glyph_hash_by_identity[id(active_glyph)]
         )
-        tk.Label(
-            options,
+        self.glyph_stroke_label.configure(
             text=f"Glyph: {glyph_name} | "
-                 f"Stroke {min(active_idx + 1, stroke_count + 1)} of {stroke_count}",
-        ).grid(column=0, row=0, columnspan=2, sticky="W", padx=2, pady=(0, 4))
-
-        tk.Button(
-            options,
-            text="Add stroke",
-            command=lambda: self.session.select_stroke(len(self.session.active_glyph_strokes)),
-        ).grid(column=0, row=1, sticky="EW", padx=4)
-        tk.Button(
-            options,
-            text="Remove stroke",
-            command=self.session.remove_active_stroke,
+            f"Stroke {min(active_idx + 1, stroke_count + 1)} of {stroke_count}"
+        )
+        self.remove_stroke_button.configure(
             state=(
                 "normal"
                 if stroke_count > 1 and active_idx < stroke_count
                 else "disabled"
-            ),
-        ).grid(column=1, row=1, sticky="EW", padx=4)
+            )
+        )
 
     def leftclick_x_y(self, event: tk.Event):
         """

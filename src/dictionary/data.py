@@ -29,8 +29,12 @@ def import_glyph_definitions_from_json():
 
     glyphs_data = {}
     for glyph_hash, data in source_dict.items():
-        detail = data["detail"]
-        strokes_data = data["strokes"]
+        if isinstance(data, dict):
+            detail = data.get("detail", None)
+            strokes_data = data["strokes"]
+        else:
+            detail = None
+            strokes_data = data
         
         strokes = [[(x, y) for x, y in stroke] for stroke in strokes_data]
         glyphs_data[glyph_hash] = (detail, strokes)
@@ -45,7 +49,9 @@ def import_glyphs_from_json() -> dict[str, Glyph]:
         for glyph_hash, (detail, strokes) in import_glyph_definitions_from_json().items()
     }
 
-def import_characters_from_json(glyph_glossary_data: dict[str, Glyph] | None = None) -> dict[str, Character]:
+def import_characters_from_json(
+    glyph_glossary_data: dict[str, Glyph] | None = None,
+) -> dict[str, Character]:
     glossary_data = import_character_definitions_from_json()
     if glyph_glossary_data is None:
         glyph_glossary_data = import_glyphs_from_json()
