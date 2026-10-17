@@ -1,5 +1,6 @@
+import os
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import typing
 import secrets
 
@@ -7,8 +8,7 @@ from src.symbols.characters import Glyph, Character
 from src.symbols.strokes import BrushStroke
 from src.dictionary.data import (
     export_characters_and_glyphs_to_json,
-    import_glyphs_from_json,
-    import_characters_from_json,
+    import_characters_and_glyphs_from_json
 )
 
 class AppSession:
@@ -20,11 +20,21 @@ class AppSession:
         self.master: tk.Misc=master
         self.on_change: list[typing.Callable[[str], None]]=[]
 
+        self.root_filepath=filedialog.askdirectory()
+        if not self.root_filepath:
+            raise FileNotFoundError("Directory not selected, exiting.")
+        else:
+            if os.path.exists(self.root_filepath + "/characters.json"):
+                self.characters_json_filepath = self.root_filepath + "/characters.json"
+            else: raise FileNotFoundError(f"Couldn't find characters.json in {self.root_filepath}")
+            if os.path.exists(self.root_filepath + "/glyphs.json"):
+                self.glyphs_json_filepath = self.root_filepath + "/glyphs.json"
+            else: raise FileNotFoundError(f"Couldn't find glyphs.json in {self.root_filepath}")
+
         # Globally relevant =================
-        self.glyph_glossary_data: dict[str, Glyph] = import_glyphs_from_json()
-        self.character_glossary_data: dict[str, Character] = (
-            import_characters_from_json(self.glyph_glossary_data)
-        )
+        characters_imported, glyphs_imported = import_characters_and_glyphs_from_json(self.characters_json_filepath, self.glyphs_json_filepath)
+        self.character_glossary_data: dict[str, Character] = characters_imported
+        self.glyph_glossary_data: dict[str, Glyph] = glyphs_imported
 
         if not self.character_glossary_data:
             raise ValueError("The glossary must contain at least one character.")
@@ -59,6 +69,8 @@ class AppSession:
         export_characters_and_glyphs_to_json(
             self.character_glossary_data,
             self.glyph_glossary_data,
+            self.characters_json_filepath,
+            self.glyphs_json_filepath
         )
 
     def select_character(self, hash: str, save_current: bool = True):

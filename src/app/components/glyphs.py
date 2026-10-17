@@ -229,12 +229,14 @@ class GlyphEditor(tk.Frame):
         """
         Draw the character's glyph extents and their stroke paths.
         """
+        def draw_gridlines():
+            for pos in range(0, self.session.CANVAS_SIZE, self.session.CELL_SIZE):
+                self.canvas.create_line(pos, 0, pos, self.session.CANVAS_SIZE, fill="#999999")
+                self.canvas.create_line(0, pos, self.session.CANVAS_SIZE, pos, fill="#999999")
         CORNER_GRIP_RADIUS = 6
 
         self.canvas.delete("all")
-        for pos in range(0, self.session.CANVAS_SIZE + 1, self.session.CELL_SIZE):
-            self.canvas.create_line(pos, 0, pos, self.session.CANVAS_SIZE, fill="#ddd")
-            self.canvas.create_line(0, pos, self.session.CANVAS_SIZE, pos, fill="#ddd")
+        draw_gridlines()
 
         character = self.session.active_character
         for idx, (glyph, extent) in enumerate(zip(character.glyphs, character.glyph_extents)):

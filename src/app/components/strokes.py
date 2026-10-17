@@ -9,9 +9,6 @@ class StrokeEditor(tk.Frame):
     def __init__(self, parent, session: AppSession):
         self.session = session
 
-        self.CANVAS_SIZE = session.CANVAS_SIZE
-        self.CELL_SIZE = session.CELL_SIZE
-
         super().__init__(parent, padx=4, pady=4, highlightthickness=1, highlightbackground="black")
 
         self._build_widgets()
@@ -21,8 +18,8 @@ class StrokeEditor(tk.Frame):
         self.columnconfigure(0, weight=1)
         self.canvas=tk.Canvas(
             self,
-            width=self.CANVAS_SIZE,
-            height=self.CANVAS_SIZE,
+            width=self.session.CANVAS_SIZE,
+            height=self.session.CANVAS_SIZE,
             highlightthickness=1,
             highlightbackground="black",
         )
@@ -84,8 +81,8 @@ class StrokeEditor(tk.Frame):
         """
         grid_max = self.session.GRID_BREAKS - 1
         x, y = (
-            min(grid_max, max(0, event.x // self.CELL_SIZE)),
-            min(grid_max, max(0, event.y // self.CELL_SIZE)),
+            min(grid_max, max(0, event.x // self.session.CELL_SIZE)),
+            min(grid_max, max(0, event.y // self.session.CELL_SIZE)),
         )
         self.session.add_stroke_point((x / grid_max, y / grid_max))
 
@@ -99,8 +96,8 @@ class StrokeEditor(tk.Frame):
 
         grid_max = self.session.GRID_BREAKS - 1
         x, y = (
-            min(grid_max, max(0, event.x // self.CELL_SIZE)),
-            min(grid_max, max(0, event.y // self.CELL_SIZE)),
+            min(grid_max, max(0, event.x // self.session.CELL_SIZE)),
+            min(grid_max, max(0, event.y // self.session.CELL_SIZE)),
         )
         self.session.remove_stroke_point((x / grid_max, y / grid_max))
 
@@ -109,9 +106,9 @@ class StrokeEditor(tk.Frame):
         Draw to `self.canvas` - add gridlines, red indicators and thick lines for current stroke, faded indicators and thin lines for others.
         """
         def draw_gridlines():
-            for pos in range(0, self.CANVAS_SIZE, self.CELL_SIZE):
-                self.canvas.create_line(pos, 0, pos, self.CANVAS_SIZE)
-                self.canvas.create_line(0, pos, self.CANVAS_SIZE, pos)
+            for pos in range(0, self.session.CANVAS_SIZE, self.session.CELL_SIZE):
+                self.canvas.create_line(pos, 0, pos, self.session.CANVAS_SIZE, fill="#999999")
+                self.canvas.create_line(0, pos, self.session.CANVAS_SIZE, pos, fill="#999999")
         
         self.canvas.delete('all')
         draw_gridlines()
@@ -121,8 +118,8 @@ class StrokeEditor(tk.Frame):
         for stroke_idx, stroke in enumerate(strokes):
             active = stroke_idx == active_idx
             points = [
-                ((x * (self.session.GRID_BREAKS - 1) + 0.5) * self.CELL_SIZE,
-                 (y * (self.session.GRID_BREAKS - 1) + 0.5) * self.CELL_SIZE)
+                ((x * (self.session.GRID_BREAKS - 1) + 0.5) * self.session.CELL_SIZE,
+                 (y * (self.session.GRID_BREAKS - 1) + 0.5) * self.session.CELL_SIZE)
                 for x, y in stroke.control_points
             ]
             if len(points) >= 2:
@@ -133,16 +130,16 @@ class StrokeEditor(tk.Frame):
                 )
             for point_idx, (x, y) in enumerate(points):
                 self.canvas.create_rectangle(
-                    x - self.CELL_SIZE / 2,
-                    y - self.CELL_SIZE / 2,
-                    x + self.CELL_SIZE / 2,
-                    y + self.CELL_SIZE / 2,
+                    x - self.session.CELL_SIZE / 2,
+                    y - self.session.CELL_SIZE / 2,
+                    x + self.session.CELL_SIZE / 2,
+                    y + self.session.CELL_SIZE / 2,
                     fill="#f00" if active else "#888",
                     stipple="gray50" if active else "gray25",
                 )
                 if active:
                     self.canvas.create_text(
-                        x - self.CELL_SIZE // 3,
-                        y - self.CELL_SIZE // 3,
+                        x - self.session.CELL_SIZE // 3,
+                        y - self.session.CELL_SIZE // 3,
                         text=str(point_idx),
                     )

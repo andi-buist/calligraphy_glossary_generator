@@ -73,11 +73,11 @@ class CurveProfileWidget(tk.Frame):
                 px, py=self.curve_profile.control_points[coord_idx - 1]
                 x0, y0 = self.scale_to_padded_canvas((px,py))
                 self.canvas.create_line(x0, y0, x1, y1,
-                                        width=1, fill="#bbb")
+                                        width=1, fill="#bbbbbb")
 
             ex0,ey0,ex1,ey1 = (x1-2.0,y1-2.0,x1+2.0,y1+2.0)
             self.canvas.create_oval(ex0, ey0, ex1, ey1,
-                                    fill="#000")
+                                    fill="#000000")
 
         # draw curve line
         for coord_idx, (x, y) in enumerate(self.curve_profile.profile):
@@ -85,7 +85,7 @@ class CurveProfileWidget(tk.Frame):
                 px, py=self.curve_profile.profile[coord_idx - 1]
                 x0, y0, x1, y1 = (*self.scale_to_padded_canvas((px,py)), *self.scale_to_padded_canvas((x,y)))
                 self.canvas.create_line(x0, y0, x1, y1,
-                                        width=1, fill="#444")
+                                        width=1, fill="#444444")
 
     def select_curve_control_point(self, coord: tuple[float,float]):
         min_selection_distance_halo = 0.1

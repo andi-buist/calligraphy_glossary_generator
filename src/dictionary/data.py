@@ -9,8 +9,8 @@ CHARACTERS_JSON_FP="data/characters.json"
 GLYPHS_JSON_FP="data/glyphs.json"
 
 
-def import_character_definitions_from_json():
-    with open(CHARACTERS_JSON_FP, "r") as file:
+def import_character_definitions_from_json(filepath: str):
+    with open(filepath, "r") as file:
         source_dict: dict[str, dict]=json.load(file)
 
     glossary_data: dict[str, dict]={}
@@ -23,8 +23,8 @@ def import_character_definitions_from_json():
 
     return glossary_data
 
-def import_glyph_definitions_from_json():
-    with open(GLYPHS_JSON_FP, "r") as file:
+def import_glyph_definitions_from_json(filepath: str):
+    with open(filepath, "r") as file:
         source_dict: dict[str, list[list[list[float, float]]]]=json.load(file)
 
     glyphs_data = {}
@@ -40,21 +40,18 @@ def import_glyph_definitions_from_json():
         glyphs_data[glyph_hash] = (detail, strokes)
     return glyphs_data
 
-def import_glyphs_from_json() -> dict[str, Glyph]:
+def import_glyphs_from_json(filepath: str) -> dict[str, Glyph]:
     return {
         glyph_hash: Glyph(
             [BrushStroke(control_points) for control_points in strokes],
             detail=detail,
         )
-        for glyph_hash, (detail, strokes) in import_glyph_definitions_from_json().items()
+        for glyph_hash, (detail, strokes) in import_glyph_definitions_from_json(filepath).items()
     }
 
-def import_characters_from_json(
-    glyph_glossary_data: dict[str, Glyph] | None = None,
-) -> dict[str, Character]:
-    glossary_data = import_character_definitions_from_json()
-    if glyph_glossary_data is None:
-        glyph_glossary_data = import_glyphs_from_json()
+def import_characters_and_glyphs_from_json(characters_filepath: str, glyphs_filepath: str) -> tuple[dict[str, Character], dict[str, Glyph]]:
+    glossary_data = import_character_definitions_from_json(characters_filepath)
+    glyph_glossary_data: dict[str, Glyph] = import_glyphs_from_json(glyphs_filepath)
 
     output_characters: dict[str, Character]={}
 
@@ -78,7 +75,7 @@ def import_characters_from_json(
             glyph_extents=glyph_extent_collection
         )
 
-    return output_characters
+    return output_characters, glyph_glossary_data
 
 
 def export_json(data: dict, filepath: str):
@@ -91,7 +88,9 @@ def export_json(data: dict, filepath: str):
 
 def export_characters_and_glyphs_to_json(
     characters: dict[str, Character],
-    glyphs: dict[str, Glyph]
+    glyphs: dict[str, Glyph],
+    characters_filepath: str,
+    glyphs_filepath: str
 ) -> None:
     character_data: dict[str, dict]={}
 
