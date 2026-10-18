@@ -4,8 +4,8 @@ from tkinter import messagebox, ttk
 from src.app.components.session import AppSession
 from src.app.components.hierarchies import CharacterHierarchy, GlyphHierarchy
 from src.app.components.characters import CharacterDefinitions, CharacterPreview
-from src.app.components.glyphs import GlyphEditor
-from src.app.components.strokes import StrokeEditor
+from src.app.components.character_editor import CharacterEditor
+from src.app.components.stroke_editor import StrokeEditor
 
 class EditorApp(tk.Frame):
     def __init__(self, parent):
@@ -13,7 +13,7 @@ class EditorApp(tk.Frame):
 
         super().__init__(parent)
 
-        self.glossary_editor = CharacterEditor(self, self.session)
+        self.glossary_editor = GlossaryEditor(self, self.session)
         self.glossary_editor.pack(fill="both", expand=True)
 
     def on_app_close(self):
@@ -27,7 +27,7 @@ class EditorApp(tk.Frame):
             self.winfo_toplevel().destroy()
 
 
-class CharacterEditor(tk.Frame):
+class GlossaryEditor(tk.Frame):
     GRID_BREAKS = AppSession.GRID_BREAKS
     CELL_SIZE = AppSession.CELL_SIZE
     canvas_size = AppSession.CANVAS_SIZE
@@ -66,9 +66,9 @@ class CharacterEditor(tk.Frame):
 
         self.editors = ttk.Notebook(self)
         self.editors.grid(column=1, row=0, sticky="NSEW", padx=12)
-        self.glyph_editor = GlyphEditor(self.editors, self.session)
+        self.character_editor = CharacterEditor(self.editors, self.session)
         self.stroke_editor = StrokeEditor(self.editors, self.session)
-        self.editors.add(self.glyph_editor, text="Character")
+        self.editors.add(self.character_editor, text="Character")
         self.editors.add(self.stroke_editor, text="Glyph")
         self.editors.bind("<<NotebookTabChanged>>", self.update_current_page)
 
@@ -104,21 +104,21 @@ class CharacterEditor(tk.Frame):
             case "selection" | "all":
                 self._rebuild_character_fields()
                 self.character_hierarchy.refresh()
-                self.glyph_editor.refresh()
+                self.character_editor.refresh()
                 self.stroke_editor.refresh()
                 self.glyph_hierarchy.refresh()
                 self.character_preview.refresh()
             case "glyphs":
-                self.glyph_editor.refresh()
+                self.character_editor.refresh()
                 self.stroke_editor.refresh()
                 self.glyph_hierarchy.refresh()
                 self.character_preview.refresh()
             case "glyph-selection":
-                self.glyph_editor.refresh()
+                self.character_editor.refresh()
                 self.stroke_editor.refresh()
                 self.glyph_hierarchy.refresh()
             case "stroke":
-                self.glyph_editor.refresh()
+                self.character_editor.refresh()
                 self.stroke_editor.refresh()
                 self.glyph_hierarchy.refresh()
                 self.character_preview.refresh()

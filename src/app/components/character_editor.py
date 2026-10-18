@@ -5,7 +5,8 @@ from tkinter import ttk
 from src.app.components.session import AppSession
 from src.symbols.characters import Glyph
 
-class GlyphEditor(tk.Frame):
+
+class CharacterEditor(tk.Frame):
     """
     A grid editor for arranging Glyphs into a Character
     """

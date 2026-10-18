@@ -90,8 +90,8 @@ class CharacterPreview(tk.Frame):
         )
         self.image_label.grid(column=0, row=1)
 
-        self.similarity_score_label=tk.Label(self, text="")
-        self.similarity_score_label.grid(column=0, row=2)
+        # self.similarity_score_label=tk.Label(self, text="")
+        # self.similarity_score_label.grid(column=0, row=2)
 
         self.refresh()
 
@@ -101,8 +101,8 @@ class CharacterPreview(tk.Frame):
         if self.character_object_cache is not None:
             self.image_label.config(image=self.character_object_cache[1])
 
-            t=Thread(target=self.get_similarity_scores, daemon=True)
-            t.start()
+            # t=Thread(target=self.get_similarity_scores, daemon=True)
+            # t.start()
 
     def refresh_active_character_image_cache(self):
         """

@@ -20,6 +20,11 @@ CHARACTER_TYPES = Literal["noun",
                           "letter", 
                           "symbol"]
 
+def add_glyph_constants(cls):
+    cls.DEFAULT = cls(strokes = [BrushStroke([(0.5,0.0),(0.5,1.0)])])
+    return cls
+
+@add_glyph_constants
 class Glyph:
     def __init__(self,
                  strokes: list[BrushStroke],
@@ -27,9 +32,11 @@ class Glyph:
         self.strokes = [strokes] if isinstance(strokes, BrushStroke) else strokes
         self.detail = detail
 
-    def draw(self, extent: tuple[tuple[float,float], tuple[float,float]] = ((0.0,0.0),(1.0,1.0))) -> Image.Image:
+    def draw(self, 
+             extent: tuple[tuple[float,float], tuple[float,float]] = ((0.0,0.0),(1.0,1.0)), 
+             size: tuple[int, int] = (GLYPH_SIZE, GLYPH_SIZE)) -> Image.Image:
         """Draw a glyph image from the character strokes."""
-        width, height = (GLYPH_SIZE, GLYPH_SIZE)
+        width, height = size
         subwidth = extent[1][0] - extent[0][0]
         subheight = extent[1][1] - extent[0][1]
 
@@ -43,11 +50,15 @@ class Glyph:
 class Character:
     def __init__(self,
                  definition: list[tuple[CHARACTER_TYPES, str]],
-                 glyphs: list[Glyph]=[Glyph([BrushStroke([(0.5,0.0),(0.5,1.0)])])],
-                 glyph_extents: list[tuple[tuple[float,float], tuple[float,float]]]=[((0.0,0.0),(1.0,1.0))]):
+                 glyphs: list[Glyph]=[],
+                 glyph_extents: list[tuple[tuple[float,float], tuple[float,float]]]=[],
+                 subcharacters: list[Character]=[],
+                 subcharacter_extents: list[tuple[tuple[float,float], tuple[float,float]]]=[]):
         self.definition = definition
         self.glyphs = glyphs
         self.glyph_extents = glyph_extents
+        self.subcharacters = subcharacters
+        self.subcharacter_extents = subcharacter_extents
 
     def clone(self):
         clone = type(self).__new__(type(self))
@@ -56,97 +67,66 @@ class Character:
         clone.glyph_extents = copy.deepcopy(self.glyph_extents)
         return clone
 
-    def draw(self) -> Image.Image:
+    def draw(self, 
+             extent: tuple[tuple[float,float], tuple[float,float]] = ((0.0,0.0),(1.0,1.0)), 
+             size: tuple[int, int] = (GLYPH_SIZE, GLYPH_SIZE)) -> Image.Image:
         """Draw a glyph image from the character strokes."""
-        width, height = (GLYPH_SIZE, GLYPH_SIZE)
+        width, height = size
 
-        character_canvas = Image.new(mode="RGBA", size=(width, height), color=(255, 255, 255, 255))
+        subwidth = extent[1][0] - extent[0][0]
+        subheight = extent[1][1] - extent[0][1]
 
-        for glyph, glyph_extent in zip(self.glyphs, self.glyph_extents):
-            glyph_canvas = glyph.draw(extent = glyph_extent)
-            character_canvas.alpha_composite(
-                glyph_canvas,
-                dest=(
-                    int(width * glyph_extent[0][0]),
-                    int(height * glyph_extent[0][1]),
-                ),
-            )
+        character_canvas = Image.new(mode="RGBA", size=(int(width * subwidth), int(height * subheight)), color=(255, 255, 255, 255))
+
+        if len(self.glyphs) > 0:
+            if self.glyph_extents is None:
+                _glyph_extents = [((0.0,0.0),(1.0,1.0))] * len(self.glyphs)
+            else:
+                _glyph_extents = self.glyph_extents
+
+            for glyph, glyph_extent in zip(self.glyphs, _glyph_extents):
+                glyph_canvas = glyph.draw(extent = glyph_extent, size=(int(width * subwidth), int(height * subheight)))
+                character_canvas.alpha_composite(
+                    glyph_canvas,
+                    dest=(
+                        int(width * glyph_extent[0][0]),
+                        int(height * glyph_extent[0][1]),
+                    ),
+                )
+
+        if len(self.subcharacters) > 0:
+            if self.subcharacter_extents is None:
+                _subcharacter_extents = [((0.0,0.0),(1.0,1.0))] * len(self.subcharacters)
+            else:
+                _subcharacter_extents = self.subcharacter_extents
+
+            for subcharacter, subcharacter_extent in zip(self.subcharacters, _subcharacter_extents):
+                subcharacter_canvas = subcharacter.draw(extent = subcharacter_extent)
+                character_canvas.alpha_composite(
+                    subcharacter_canvas,
+                    dest=(
+                        int(width * subcharacter_extent[0][0]),
+                        int(height * subcharacter_extent[0][1]),
+                    ),
+                )
+
+        if len(self.subcharacters) > 0:
+            if self.subcharacter_extents is None:
+                _subcharacter_extents = [((0.0,0.0),(1.0,1.0))] * len(self.subcharacters)
+            else:
+                _subcharacter_extents = self.subcharacter_extents
+
+            for glyph, glyph_extent in zip(self.glyphs, _glyph_extents):
+                glyph_canvas = glyph.draw(extent = glyph_extent)
+                character_canvas.alpha_composite(
+                    glyph_canvas,
+                    dest=(
+                        int(width * glyph_extent[0][0]),
+                        int(height * glyph_extent[0][1]),
+                    ),
+                )
 
         return character_canvas
-
-# TODO: cleanup
-class CompoundCharacter(Character):
-    def __init__(self,
-                 characters: tuple[Character, Character],
-                 placement: Literal["LEFT-RIGHT", "RIGHT-LEFT", "TOP-BOTTOM", "BOTTOM-TOP"]):
-        self.characters:tuple[Character,Character]=characters
-        self.placement:str=placement
-        self.glyph = self.generate_glyph()
-
-    def generate_glyph(self) -> Image.Image:
-        """Draw a glyph image by combining the source characters."""
-        def draw_character(character: Character, canvas: Image, fill_extent:bool=True):
-            strokes=character.strokes
-
-            if strokes is not None and fill_extent:
-                scaled_strokes: list[BrushStroke]=[]
-                min_x = min(stroke.bbox[0][0] for stroke in strokes)
-                min_y = min(stroke.bbox[0][1] for stroke in strokes)
-                max_x = max(stroke.bbox[1][0] for stroke in strokes)
-                max_y = max(stroke.bbox[1][1] for stroke in strokes)
-                width = max_x - min_x
-                height = max_y - min_y
-
-                def scale_point(point: tuple[float, float]) -> tuple[float, float]:
-                    x = (point[0] - min_x) / width if width else 0.5
-                    y = (point[1] - min_y) / height if height else 0.5
-                    return x, y
-
-                for stroke in strokes:
-                    scaled_stroke = copy.copy(stroke)
-                    scaled_stroke.control_points = [
-                        scale_point(point) for point in stroke.control_points
-                    ]
-                    scaled_stroke.spline_path_points = [
-                        scale_point(point) for point in stroke.spline_path_points
-                    ]
-                    scale_min = scale_point(stroke.bbox[0])
-                    scale_max = scale_point(stroke.bbox[1])
-                    scaled_stroke.bbox = (
-                        scale_min,
-                        scale_max,
-                    )
-                    scaled_strokes.append(scaled_stroke)
-            else:
-                scaled_strokes=strokes
-
-            for stroke in scaled_strokes:
-                canvas = stroke.draw(canvas)
-
-            return canvas
-
-        match self.placement:
-            case "LEFT-RIGHT" | "RIGHT-LEFT":
-                canvas0 = Image.new(mode="RGBA", size=(GLYPH_SIZE //2, GLYPH_SIZE), color=(255, 255, 255, 255))
-                canvas1 = Image.new(mode="RGBA", size=(GLYPH_SIZE //2, GLYPH_SIZE), color=(255, 255, 255, 255))
-            case "TOP-BOTTOM" | "BOTTOM-TOP":
-                canvas0 = Image.new(mode="RGBA", size=(GLYPH_SIZE, GLYPH_SIZE // 2), color=(255, 255, 255, 255))
-                canvas1 = Image.new(mode="RGBA", size=(GLYPH_SIZE, GLYPH_SIZE // 2), color=(255, 255, 255, 255))
-
-        canvas0 = draw_character(self.characters[0], canvas0)
-        canvas1 = draw_character(self.characters[1], canvas1)
-
-        output_img = Image.new(mode="RGBA", size=(GLYPH_SIZE, GLYPH_SIZE), color=(255, 255, 255, 255))
-
-        match self.placement:
-            case "LEFT-RIGHT" | "RIGHT-LEFT":
-                output_img.paste(canvas0, (0,0))
-                output_img.paste(canvas1, (GLYPH_SIZE // 2,0))
-            case "TOP-BOTTOM" | "BOTTOM-TOP":
-                output_img.paste(canvas0, (0,0))
-                output_img.paste(canvas1, (0,GLYPH_SIZE // 2))
-
-        return output_img
 
 def glyph_orientation(character: Character) -> Literal["horizontal", "vertical"]:
     hv_score = 0
