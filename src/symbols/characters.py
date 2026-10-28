@@ -37,10 +37,10 @@ class Glyph:
              size: tuple[int, int] = (GLYPH_SIZE, GLYPH_SIZE)) -> Image.Image:
         """Draw a glyph image from the character strokes."""
         width, height = size
-        subwidth = extent[1][0] - extent[0][0]
-        subheight = extent[1][1] - extent[0][1]
+        subwidth_scale = extent[1][0] - extent[0][0]
+        subheight_scale = extent[1][1] - extent[0][1]
 
-        glyph_canvas = Image.new(mode="RGBA", size=(int(width * subwidth), int(height * subheight)), color=(255, 255, 255, 0))
+        glyph_canvas = Image.new(mode="RGBA", size=(int(width * subwidth_scale), int(height * subheight_scale)), color=(255, 255, 255, 0))
 
         for stroke in self.strokes:
             glyph_canvas = stroke.draw(glyph_canvas)
@@ -73,10 +73,11 @@ class Character:
         """Draw a glyph image from the character strokes."""
         width, height = size
 
-        subwidth = extent[1][0] - extent[0][0]
-        subheight = extent[1][1] - extent[0][1]
+        subwidth_scale = extent[1][0] - extent[0][0]
+        subheight_scale = extent[1][1] - extent[0][1]
+        subwidth, subheight = (int(width * subwidth_scale), int(height * subheight_scale))
 
-        character_canvas = Image.new(mode="RGBA", size=(int(width * subwidth), int(height * subheight)), color=(255, 255, 255, 255))
+        character_canvas = Image.new(mode="RGBA", size=(subwidth, subheight), color=(255, 255, 255, 0))
 
         if len(self.glyphs) > 0:
             if self.glyph_extents is None:
@@ -85,12 +86,12 @@ class Character:
                 _glyph_extents = self.glyph_extents
 
             for glyph, glyph_extent in zip(self.glyphs, _glyph_extents):
-                glyph_canvas = glyph.draw(extent = glyph_extent, size=(int(width * subwidth), int(height * subheight)))
+                glyph_canvas = glyph.draw(extent = glyph_extent, size = (subwidth, subheight))
                 character_canvas.alpha_composite(
                     glyph_canvas,
                     dest=(
-                        int(width * glyph_extent[0][0]),
-                        int(height * glyph_extent[0][1]),
+                        int(subwidth * glyph_extent[0][0]),
+                        int(subheight * glyph_extent[0][1]),
                     ),
                 )
 
@@ -101,28 +102,12 @@ class Character:
                 _subcharacter_extents = self.subcharacter_extents
 
             for subcharacter, subcharacter_extent in zip(self.subcharacters, _subcharacter_extents):
-                subcharacter_canvas = subcharacter.draw(extent = subcharacter_extent)
+                subcharacter_canvas = subcharacter.draw(extent = subcharacter_extent, size = (subwidth, subheight))
                 character_canvas.alpha_composite(
                     subcharacter_canvas,
                     dest=(
-                        int(width * subcharacter_extent[0][0]),
-                        int(height * subcharacter_extent[0][1]),
-                    ),
-                )
-
-        if len(self.subcharacters) > 0:
-            if self.subcharacter_extents is None:
-                _subcharacter_extents = [((0.0,0.0),(1.0,1.0))] * len(self.subcharacters)
-            else:
-                _subcharacter_extents = self.subcharacter_extents
-
-            for glyph, glyph_extent in zip(self.glyphs, _glyph_extents):
-                glyph_canvas = glyph.draw(extent = glyph_extent)
-                character_canvas.alpha_composite(
-                    glyph_canvas,
-                    dest=(
-                        int(width * glyph_extent[0][0]),
-                        int(height * glyph_extent[0][1]),
+                        int(subwidth * subcharacter_extent[0][0]),
+                        int(subheight * subcharacter_extent[0][1]),
                     ),
                 )
 

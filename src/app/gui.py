@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from src.app.components.session import AppSession
-from src.app.components.hierarchies import CharacterHierarchy, GlyphHierarchy
+from src.app.components.hierarchies import CharacterHierarchy, CharacterComponentHierarchy
 from src.app.components.characters import CharacterDefinitions, CharacterPreview
 from src.app.components.character_editor import CharacterEditor
 from src.app.components.stroke_editor import StrokeEditor
@@ -82,7 +82,7 @@ class GlossaryEditor(tk.Frame):
         self.right_pane.columnconfigure(0, weight=1)
         self.right_pane.grid(column=2, row=0, sticky="NSEW", padx=12)
 
-        self.glyph_hierarchy = GlyphHierarchy(self.right_pane, self.session)
+        self.glyph_hierarchy = CharacterComponentHierarchy(self.right_pane, self.session)
         self.glyph_hierarchy.pack(expand=True, fill="both")
         self.character_preview = CharacterPreview(self.right_pane, self.session)
         self.character_preview.pack(fill="both", pady=8)

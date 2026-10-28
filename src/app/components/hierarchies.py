@@ -20,11 +20,12 @@ def build_treeview_icons(parent: tk.Misc):
 
     return treeview_icons
 
-class GlyphHierarchy(tk.Frame):
+class CharacterComponentHierarchy(tk.Frame):
     def __init__(self, parent, session: AppSession):
         self.session: AppSession=session
         super().__init__(parent)
 
+        # Defining glyph detail information --------
         self.glyph_detail_var = tk.StringVar()
         detail_row = tk.Frame(self)
         detail_row.pack(fill="x", pady=4)
@@ -37,6 +38,7 @@ class GlyphHierarchy(tk.Frame):
         self.glyph_detail_entry.bind("<Return>", self.save_glyph_detail)
         self.glyph_detail_entry.bind("<FocusOut>", self.save_glyph_detail)
 
+        # Main body --------
         tree_frame = ttk.Frame(self)
         tree_frame.pack(expand=True, fill="both")
         tree_frame.rowconfigure(0, weight=1)
@@ -53,7 +55,10 @@ class GlyphHierarchy(tk.Frame):
         self.treeview.configure(yscrollcommand=scrollbar.set)
         self.treeview.bind("<<TreeviewSelect>>", self.select_tree_item)
         self.tree_id_to_glyph_idx: dict[str, int] = {}
+        self.tree_id_to_subcharacter_idx: dict[str, int] = {}
         self.tree_id_to_stroke_idx: dict[str, tuple[int, int]] = {}
+
+        tk.Button(self, text="Remove Glyph/Subcharacter", command=self.session.remove_active_component_from_character).pack(fill="x")
 
         self.refresh()
 
@@ -66,11 +71,20 @@ class GlyphHierarchy(tk.Frame):
         self.tree_id_to_glyph_idx.clear()
         self.tree_id_to_stroke_idx.clear()
 
+        ac_type, ac_idx = self.session.active_component_idx
+
         glyph_hash_by_identity = {
             id(glyph): glyph_hash
             for glyph_hash, glyph in self.session.glyph_glossary_data.items()
         }
+
+        subcharacter_hash_by_identity = {
+            id(character): character_hash
+            for character_hash, character in self.session.character_glossary_data.items()
+        }
+
         tv.tag_configure("named-glyph", font=("TkDefaultFont", 9, "italic"))
+
         for glyph_idx, glyph in enumerate(self.session.active_character.glyphs):
             glyph_hash = glyph_hash_by_identity[id(glyph)]
             glyph_item = tv.insert(
@@ -85,7 +99,7 @@ class GlyphHierarchy(tk.Frame):
                 tags=tuple(
                     tag
                     for tag, enabled in (
-                        ("selected", glyph_idx == self.session.active_glyph_idx),
+                        ("selected", ac_type == "glyph" and glyph_idx == ac_idx),
                         ("named-glyph", glyph.detail is not None),
                     )
                     if enabled
@@ -99,13 +113,38 @@ class GlyphHierarchy(tk.Frame):
                     text=f"Stroke {stroke_idx + 1}",
                     tags=(
                         ("selected",)
-                        if glyph_idx == self.session.active_glyph_idx
+                        if ac_type == "glyph" 
+                        and glyph_idx == ac_idx
                         and stroke_idx == self.session.active_stroke_idx
                         else ()
                     ),
                 )
                 self.tree_id_to_stroke_idx[stroke_item] = (glyph_idx, stroke_idx)
-        self.glyph_detail_var.set(self.session.active_glyph.detail or "")
+
+
+        for subcharacter_idx, subcharacter in enumerate(self.session.active_character.subcharacters):
+            subcharacter_hash = subcharacter_hash_by_identity[id(subcharacter)]
+            subcharacter_item = tv.insert(
+                "",
+                tk.END,
+                text=(
+                    f"Subcharacter '{subcharacter.definition[0][1]}'"
+                    if subcharacter.definition is not None
+                    else f"Subcharacter {subcharacter_hash}"
+                ),
+                tags=tuple(
+                    tag
+                    for tag, enabled in (
+                        ("selected", ac_type == "subcharacter" and subcharacter_idx == ac_idx),
+                    )
+                    if enabled
+                ),
+            )
+            self.tree_id_to_subcharacter_idx[subcharacter_item] = subcharacter_idx
+
+        if ac_type == "glyph":
+            self.glyph_detail_var.set(self.session.active_component.detail or "")
+
         tv.tag_configure("selected", background="#b2cdec")
 
     def save_glyph_detail(self, _event: tk.Event | None = None):
@@ -130,9 +169,15 @@ class GlyphHierarchy(tk.Frame):
             )
         elif item in self.tree_id_to_glyph_idx:
             self.session.select_glyph(self.tree_id_to_glyph_idx[item])
+        elif item in self.tree_id_to_subcharacter_idx:
+            self.session.select_subcharacter(self.tree_id_to_subcharacter_idx[item])
         else:
             return
-        self.glyph_detail_var.set(self.session.active_glyph.detail or "")
+
+        if self.session.active_component_idx[0] == "glyph":
+            self.glyph_detail_var.set(self.session.active_component.detail or "")
+        else:
+            self.glyph_detail_var.set("")
 
 class CharacterHierarchy(tk.Frame):
     def __init__(self, parent, session: AppSession):

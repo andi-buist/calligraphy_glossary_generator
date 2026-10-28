@@ -1,9 +1,9 @@
 import tkinter as tk
-
 from tkinter import ttk
+from typing import Literal
 
 from src.app.components.session import AppSession
-from src.symbols.characters import Glyph
+from src.symbols.characters import Glyph, Character
 
 
 class CharacterEditor(tk.Frame):
@@ -22,6 +22,10 @@ class CharacterEditor(tk.Frame):
         self.glyph_hash_var = tk.StringVar()
         self.glyph_picker: ttk.Combobox | None = None
         self.glyph_picker_items: list[tuple[str, Glyph]] = []
+
+        self.subcharacter_hash_var = tk.StringVar()
+        self.subcharacter_picker: ttk.Combobox | None = None
+        self.subcharacter_picker_items: list[tuple[str, Character]] = []
 
         super().__init__(parent, padx=4, pady=4, highlightthickness=1, highlightbackground="black")
 
@@ -45,8 +49,8 @@ class CharacterEditor(tk.Frame):
         options = tk.Frame(self, pady=4)
         options.columnconfigure(0, weight=1)
         options.grid(column=0, row=1, sticky="EW")
-        self.character_glyph_label = tk.Label(options)
-        self.character_glyph_label.grid(
+        self.character_label = tk.Label(options)
+        self.character_label.grid(
             column=0, row=0, columnspan=5, sticky="EW", padx=4, pady=4
         )
 
@@ -58,37 +62,68 @@ class CharacterEditor(tk.Frame):
         )
         self.glyph_picker.grid(column=0, row=1, sticky="EW", padx=4)
         tk.Button(options, text="Add existing glyph", command=self.place_glyph).grid(
-            column=1, row=1, padx=4
+            column=1, row=1, sticky="EW", padx=4
         )
         tk.Button(options, text="New glyph", command=self.create_glyph).grid(
-            column=2, row=1, padx=4
+            column=2, row=1, sticky="EW", padx=4
         )
-        self.remove_glyph_button = tk.Button(
+
+        self.subcharacter_picker = ttk.Combobox(
             options,
-            text="Remove from character",
-            command=self.remove_glyph,
+            textvariable=self.subcharacter_hash_var,
+            values=(),
+            state="readonly",
         )
-        self.remove_glyph_button.grid(column=3, row=1, padx=4)
+        self.subcharacter_picker.grid(column=0, row=2, sticky="EW", padx=4)
+        tk.Button(options, text="Add existing subcharacter", command=self.place_subcharacter).grid(
+            column=1, row=2, sticky="EW", padx=4
+        )
 
     def refresh(self):
         selected_glyph_hash = self._selected_glyph_hash()
+        selected_subcharacter_hash = self._selected_subcharacter_hash()
         self.draw_canvas()
+
+        ac_type, ac_idx = self.session.active_component_idx
 
         glyph_hash_by_identity = {
             id(glyph): glyph_hash
             for glyph_hash, glyph in self.session.glyph_glossary_data.items()
         }
-        active_glyph = self.session.active_glyph
-        active_glyph_hash = glyph_hash_by_identity[id(active_glyph)]
-        glyph_label = (
-            f"'{active_glyph.detail}'"
-            if active_glyph.detail is not None
-            else active_glyph_hash
-        )
-        self.character_glyph_label.configure(
-            text=f"Character: {self.session.active_character_hash} | Glyph: {glyph_label}"
-        )
 
+        subcharacter_hash_by_identity = {
+            id(character): character_hash
+            for character_hash, character in self.session.character_glossary_data.items()
+        }
+
+        active_component = self.session.active_component
+
+        if ac_type == "glyph":
+            active_glyph_hash = glyph_hash_by_identity[id(active_component)]
+
+            glyph_label = (
+                f"'{active_component.detail}'"
+                if active_component.detail is not None
+                else active_glyph_hash
+            )
+
+            self.character_label.configure(
+                text=f"Character: {self.session.active_character_hash} | Glyph: {glyph_label}"
+            )
+        else:
+            active_subcharacter_hash = subcharacter_hash_by_identity[id(active_component)]
+
+            subcharacter_label = (
+                f"'{active_component.definition[0][1]}'"
+                if active_component.definition is not None
+                else active_subcharacter_hash
+            )
+            
+            self.character_label.configure(
+                text=f"Character: {self.session.active_character_hash} | Subcharacter: {subcharacter_label}"
+            )
+
+        # Glyph picker setup ---------------
         self.glyph_picker_items = sorted(
             self.session.glyph_glossary_data.items(),
             key=lambda item: (
@@ -114,14 +149,35 @@ class CharacterEditor(tk.Frame):
             self.glyph_picker.current(selected_idx)
         else:
             self.glyph_hash_var.set("")
-        self.remove_glyph_button.configure(
-            state=(
-                "normal"
-                if len(self.session.active_character.glyphs) > 1
-                else "disabled"
-            )
-        )
 
+        # Subcharacter picker setup ---------------
+        self.subcharacter_picker_items = sorted(
+            self.session.character_glossary_data.items(),
+            key=lambda item: (
+                item[1].definition is None,
+                (item[1].definition[0][1] or "").casefold(),
+                item[0],
+            ),
+        )
+        display_values = [
+            f"'{character.definition[0][1]}'" if character.definition is not None else character_hash
+            for character_hash, character in self.subcharacter_picker_items
+        ]
+        self.subcharacter_picker.configure(values=display_values)
+        if self.subcharacter_picker_items:
+            selected_idx = next(
+                (
+                    idx
+                    for idx, (subcharacter_hash, _) in enumerate(self.subcharacter_picker_items)
+                    if subcharacter_hash == selected_subcharacter_hash
+                ),
+                0,
+            )
+            self.subcharacter_picker.current(selected_idx)
+        else:
+            self.subcharacter_hash_var.set("")
+
+    # Glyph adder/remover functions -------------
     def _selected_glyph_hash(self) -> str | None:
         if self.glyph_picker is not None:
             selected_idx = self.glyph_picker.current()
@@ -136,11 +192,21 @@ class CharacterEditor(tk.Frame):
 
     def create_glyph(self):
         self.session.create_glyph_for_character()
+    
+    # Subcharacter adder/remover functions -------------
+    def _selected_subcharacter_hash(self) -> str | None:
+        if self.subcharacter_picker is not None:
+            selected_idx = self.subcharacter_picker.current()
+            if 0 <= selected_idx < len(self.subcharacter_picker_items):
+                return self.subcharacter_picker_items[selected_idx][0]
+        return None
 
-    def remove_glyph(self):
-        if len(self.session.active_character.glyphs) > 1:
-            self.session.remove_active_glyph_from_character()
+    def place_subcharacter(self):
+        subcharacter_hash = self._selected_subcharacter_hash()
+        if subcharacter_hash:
+            self.session.add_subcharacter_to_character(subcharacter_hash)
 
+    # Canvas functions ------------
     def _canvas_point(self, event: tk.Event) -> tuple[float, float]:
         return (
             min(max(event.x / self.session.CANVAS_SIZE, 0.0), 1.0),
@@ -158,8 +224,13 @@ class CharacterEditor(tk.Frame):
 
         self.drag_mode = None
 
-        if self.session.active_glyph_idx is not None:
-            (x0, y0), (x1, y1) = character.glyph_extents[self.session.active_glyph_idx]
+        if self.session.active_component_idx is not None:
+            ac_type, ac_idx = self.session.active_component_idx
+            if ac_type == "glyph":
+                (x0, y0), (x1, y1) = character.glyph_extents[ac_idx]
+            else:
+                (x0, y0), (x1, y1) = character.subcharacter_extents[ac_idx]
+
             for corner_name, (cx, cy) in (
                 ("top-left", (x0, y0)),
                 ("top-right", (x1, y0)),
@@ -173,16 +244,24 @@ class CharacterEditor(tk.Frame):
 
             self.session.active_stroke_idx = 0
             self.drag_start = (x, y)
-            self.drag_extent = character.glyph_extents[self.session.active_glyph_idx]
+
+            if ac_type == "glyph":
+                self.drag_extent = character.glyph_extents[ac_idx]
+            else:
+                self.drag_extent = character.subcharacter_extents[ac_idx]
+
             self.drag_mode = self.drag_mode or "move"
             self.extent_moved = False
 
     def drag_extent_motion(self, event: tk.Event):
-        if self.session.active_glyph_idx is None or self.drag_start is None or self.drag_extent is None:
+        if self.session.active_component_idx is None or self.drag_start is None or self.drag_extent is None:
             return
+        
         x, y = self._canvas_point(event)
         dx, dy = x - self.drag_start[0], y - self.drag_start[1]
         (x0, y0), (x1, y1) = self.drag_extent
+
+        ac_type, ac_idx = self.session.active_component_idx
 
         if self.drag_mode == "move":
             grid_size = self.session.CELL_SIZE / self.session.CANVAS_SIZE
@@ -214,12 +293,17 @@ class CharacterEditor(tk.Frame):
                     y0 + minimum_size,
                 )
             extent = ((x0, y0), (x1, y1))
-        self.session.active_character.glyph_extents[self.session.active_glyph_idx] = extent
+
+        if ac_type == "glyph":
+            self.session.active_character.glyph_extents[ac_idx] = extent
+        else:
+            self.session.active_character.subcharacter_extents[ac_idx] = extent
+
         self.extent_moved = self.extent_moved or extent != self.drag_extent
         self.draw_canvas()
 
     def drag_extent_end(self, _event: tk.Event):
-        if self.session.active_glyph_idx is not None:
+        if self.session.active_component_idx is not None:
             self.session.refresh(
                 "glyphs" if self.extent_moved else "glyph-selection"
             )
@@ -240,49 +324,67 @@ class CharacterEditor(tk.Frame):
         draw_gridlines()
 
         character = self.session.active_character
-        for idx, (glyph, extent) in enumerate(zip(character.glyphs, character.glyph_extents)):
-            (x0, y0), (x1, y1) = extent
-            left, top = x0 * self.session.CANVAS_SIZE, y0 * self.session.CANVAS_SIZE
-            right, bottom = x1 * self.session.CANVAS_SIZE, y1 * self.session.CANVAS_SIZE
 
-            active = idx == self.session.active_glyph_idx
+        ac_type, ac_idx = self.session.active_component_idx
 
-            self.canvas.create_rectangle(
-                left, top, right, bottom,
-                outline="#d44" if active else "#666",
-                width=3 if active else 1
-            )
+        component_dict: dict[Literal["glyph", "subcharacter"], zip[tuple[Glyph | Character, tuple[tuple[float, float], tuple[float, float]]]]] = {
+            "glyph": zip(character.glyphs, character.glyph_extents),
+            "subcharacter": zip(character.subcharacters, character.subcharacter_extents)
+            }
 
-            width, height = right - left, bottom - top
-            for stroke in glyph.strokes:
-                points = [
-                    (
-                        left + ((x * (self.session.GRID_BREAKS - 1) + 0.5) / self.session.GRID_BREAKS) * width,
-                        top + ((y * (self.session.GRID_BREAKS - 1) + 0.5) / self.session.GRID_BREAKS) * height,
+        for component_type, component_tuple in component_dict.items():
+            for idx, (component, extent) in enumerate(component_tuple):
+                (x0, y0), (x1, y1) = extent
+                left, top = x0 * self.session.CANVAS_SIZE, y0 * self.session.CANVAS_SIZE
+                right, bottom = x1 * self.session.CANVAS_SIZE, y1 * self.session.CANVAS_SIZE
+
+                active = component_type == ac_type and idx == ac_idx
+
+                self.canvas.create_rectangle(
+                    left, top, right, bottom,
+                    outline="#d44" if active else "#666",
+                    width=3 if active else 1
+                )
+
+                width, height = right - left, bottom - top
+
+                if component_type == "glyph":
+                    for stroke in component.strokes:
+                        points = [
+                            (
+                                left + ((x * (self.session.GRID_BREAKS - 1) + 0.5) / self.session.GRID_BREAKS) * width,
+                                top + ((y * (self.session.GRID_BREAKS - 1) + 0.5) / self.session.GRID_BREAKS) * height,
+                            )
+                            for x, y in stroke.spline_path_points
+                        ]
+                        if len(points) >= 2:
+                            self.canvas.create_line(*[coordinate for point in points for coordinate in point],
+                            fill="#d44" if active else "#666",
+                            width=3 if active else 1)
+                        elif points:
+                            x, y = points[0]
+                            self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2,
+                                                    fill="#d44" if active else "#666",
+                                                    outline="#d44" if active else "#666")
+                else:
+                    subcharacter_label = f"Character:\n{component.definition[0][1]}"
+                    self.canvas.create_text(
+                        left + (right - left) / 2,
+                        top + (bottom - top) / 2,
+                        text = subcharacter_label
                     )
-                    for x, y in stroke.spline_path_points
-                ]
-                if len(points) >= 2:
-                    self.canvas.create_line(*[coordinate for point in points for coordinate in point],
-                    fill="#d44" if active else "#666",
-                    width=3 if active else 1)
-                elif points:
-                    x, y = points[0]
-                    self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2,
-                                            fill="#d44" if active else "#666",
-                                            outline="#d44" if active else "#666")
-            if active:
-                for corner_x, corner_y in (
-                    (left, top),
-                    (right, top),
-                    (left, bottom),
-                    (right, bottom),
-                ):
-                    self.canvas.create_oval(
-                        corner_x - CORNER_GRIP_RADIUS,
-                        corner_y - CORNER_GRIP_RADIUS,
-                        corner_x + CORNER_GRIP_RADIUS,
-                        corner_y + CORNER_GRIP_RADIUS,
-                        fill="#d44",
-                        outline="white",
-                    )
+                if active:
+                    for corner_x, corner_y in (
+                        (left, top),
+                        (right, top),
+                        (left, bottom),
+                        (right, bottom),
+                    ):
+                        self.canvas.create_oval(
+                            corner_x - CORNER_GRIP_RADIUS,
+                            corner_y - CORNER_GRIP_RADIUS,
+                            corner_x + CORNER_GRIP_RADIUS,
+                            corner_y + CORNER_GRIP_RADIUS,
+                            fill="#d44",
+                            outline="white",
+                        )

@@ -2,6 +2,7 @@ import os
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import typing
+from typing import Literal
 import secrets
 
 from src.symbols.characters import Glyph, Character
@@ -43,10 +44,10 @@ class AppSession:
         self.active_character_hash: str=""
         self.active_character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[]
         self.current_page: str = "Character"
-        # Relevant to current Glyph =========
-        self.active_glyph_idx: int=0
 
-        # Relevant to current BrushStroke ===
+        # Relevant to current Glyph/subCharacter
+        self.active_component_idx: tuple[Literal["glyph","subcharacter"], int]=("glyph",0)
+        # Relevant to current BrushStroke
         self.active_stroke_idx: int=0
 
         # Setup -----------------------------
@@ -133,12 +134,20 @@ class AppSession:
         return self.character_glossary_data[self.active_character_hash]
 
     @property
-    def active_glyph(self) -> Glyph:
-        return self.active_character.glyphs[self.active_glyph_idx]
+    def active_component(self) -> Glyph | Character:
+        ac_type, ac_idx = self.active_component_idx
+        if ac_type == "glyph":
+            return self.active_character.glyphs[ac_idx]
+        else:
+            return self.active_character.subcharacters[ac_idx]
 
     @property
     def active_glyph_strokes(self) -> list[BrushStroke]:
-        return self.active_glyph.strokes
+        ac_type, ac_idx = self.active_component_idx
+        if ac_type == "glyph":
+            return self.active_component.strokes
+        else:
+            return None
 
     def register_character_glyphs(self, character: Character) -> None:
         registered_ids = {id(glyph) for glyph in self.glyph_glossary_data.values()}
@@ -156,6 +165,7 @@ class AppSession:
 
         return glyph_hash
 
+    # Glyph addition, creation -----
     def add_glyph_to_character(self, glyph_hash: str) -> None:
         character = self.active_character
         new_idx = len(character.glyphs)
@@ -164,7 +174,7 @@ class AppSession:
         character.glyphs.append(glyph)
 
         character.glyph_extents.append(((0.0,0.0),(1.0,1.0)))
-        self.active_glyph_idx = new_idx
+        self.active_component_idx = ("glyph", new_idx)
         self.active_stroke_idx = 0
         self.refresh("glyphs")
 
@@ -174,13 +184,45 @@ class AppSession:
         self.add_glyph_to_character(glyph_hash)
         return glyph_hash
 
-    def remove_active_glyph_from_character(self) -> None:
+    # Subcharacter addition -----
+    def add_subcharacter_to_character(self, character_hash: str) -> None:
         character = self.active_character
-        if len(character.glyphs) <= 1:
-            raise ValueError("A character must contain at least one glyph.")
-        character.glyphs.pop(self.active_glyph_idx)
-        character.glyph_extents.pop(self.active_glyph_idx)
-        self.active_glyph_idx = min(self.active_glyph_idx, len(character.glyphs) - 1)
+        new_idx = len(character.subcharacters)
+
+        subcharacter = self.character_glossary_data[character_hash]
+        character.subcharacters.append(subcharacter)
+
+        character.subcharacter_extents.append(((0.0,0.0),(1.0,1.0)))
+        self.active_subcharacter_idx = new_idx
+        self.active_stroke_idx = 0
+        self.refresh("glyphs")
+
+    # Active component removal ---
+    def remove_active_component_from_character(self) -> None:
+        character = self.active_character
+        ac_type, ac_idx = self.active_component_idx
+
+        if ac_type == "glyph":
+            character.glyphs.pop(ac_idx)
+            character.glyph_extents.pop(ac_idx)
+            if len(character.glyphs) > 0:
+                self.active_component_idx = ("glyph", min(ac_idx, len(character.glyphs) - 1))
+            elif len(character.subcharacters):
+                self.active_component_idx = ("subcharacter", min(ac_idx, len(character.subcharacters) - 1))
+            else:
+                print("Character has no Glyphs or Subcharacters!")
+                self.active_component_idx = None
+        else:
+            character.subcharacters.pop(ac_idx)
+            character.subcharacter_extents.pop(ac_idx)
+            if len(character.subcharacters):
+                self.active_component_idx = ("subcharacter", min(ac_idx, len(character.subcharacters) - 1))
+            elif len(character.glyphs) > 0:
+                self.active_component_idx = ("glyph", min(ac_idx, len(character.glyphs) - 1))
+            else:
+                print("Character has no Glyphs or Subcharacters!")
+                self.active_component_idx = None
+
         self.active_stroke_idx = 0
         self.refresh("glyphs")
 
@@ -242,9 +284,16 @@ class AppSession:
         selected_stroke_idx = 0 if stroke_idx is None else stroke_idx
         if not 0 <= selected_stroke_idx <= len(strokes):
             raise IndexError(f"{selected_stroke_idx} is not a valid stroke index.")
-        self.active_glyph_idx = idx
+        self.active_component_idx = ("glyph", idx)
         self.active_stroke_idx = selected_stroke_idx
         self.refresh("stroke" if stroke_idx is not None else "glyph-selection")
+
+    def select_subcharacter(self, idx: int) -> None:
+        if not 0 <= idx < len(self.active_character.subcharacters):
+            raise IndexError(f"{idx} is not a valid subcharacter index.")
+        self.active_component_idx = ("subcharacter", idx)
+        self.active_stroke_idx = 0
+        self.refresh("glyph-selection")
 
     def select_stroke(self, idx: int) -> None:
         if not 0 <= idx <= len(self.active_glyph_strokes):
@@ -281,7 +330,13 @@ class AppSession:
         Converts a `Character` into the editor setup so it can be edited.
         """
         self.register_character_glyphs(character)
-        self.active_glyph_idx=0
+        if len(character.glyphs) > 0:
+            self.active_component_idx = ("glyph", 0)
+        elif len(character.subcharacters) > 0:
+            self.active_component_idx = ("subcharacter", 0)
+        else:
+            print("Character has no Glyph or Subcharacter data!")
+            self.active_component_idx = None
         self.active_stroke_idx=0
 
         self.active_character_defs_vars: list[tuple[tk.StringVar,tk.StringVar]]=[

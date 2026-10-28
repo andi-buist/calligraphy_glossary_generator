@@ -31,17 +31,21 @@ class StrokeEditor(tk.Frame):
         options.columnconfigure(0, weight=1)
         options.columnconfigure(1, weight=1)
         options.grid(column=0, row=1, sticky="EW")
-        self.glyph_stroke_label = tk.Label(options)
-        self.glyph_stroke_label.grid(
+
+        self.context_label = tk.Label(options)
+        self.context_label.grid(
             column=0, row=0, columnspan=2, sticky="W", padx=2, pady=(0, 4)
         )
-        tk.Button(
+
+        self.add_stroke_button = tk.Button(
             options,
             text="Add stroke",
             command=lambda: self.session.select_stroke(
                 len(self.session.active_glyph_strokes)
             ),
-        ).grid(column=0, row=1, sticky="EW", padx=4)
+        )
+        self.add_stroke_button.grid(column=0, row=1, sticky="EW", padx=4)
+
         self.remove_stroke_button = tk.Button(
             options,
             text="Remove stroke",
@@ -51,29 +55,51 @@ class StrokeEditor(tk.Frame):
 
     def refresh(self):
         self.draw_canvas()
-        active_idx = self.session.active_stroke_idx
-        stroke_count = len(self.session.active_glyph_strokes)
+
+        ac_type, ac_idx = self.session.active_component_idx
+
         glyph_hash_by_identity = {
             id(glyph): glyph_hash
             for glyph_hash, glyph in self.session.glyph_glossary_data.items()
         }
-        active_glyph = self.session.active_glyph
-        glyph_name = (
-            f"'{active_glyph.detail}'"
-            if active_glyph.detail is not None
-            else glyph_hash_by_identity[id(active_glyph)]
-        )
-        self.glyph_stroke_label.configure(
-            text=f"Glyph: {glyph_name} | "
-            f"Stroke {min(active_idx + 1, stroke_count + 1)} of {stroke_count}"
-        )
-        self.remove_stroke_button.configure(
-            state=(
-                "normal"
-                if stroke_count > 1 and active_idx < stroke_count
-                else "disabled"
+
+        subcharacter_hash_by_identity = {
+            id(character): character_hash
+            for character_hash, character in self.session.character_glossary_data.items()
+        }
+
+        if ac_type == "glyph":
+            active_idx = self.session.active_stroke_idx
+            stroke_count = len(self.session.active_glyph_strokes)
+
+            active_glyph = self.session.active_component
+            glyph_name = (
+                f"'{active_glyph.detail}'"
+                if active_glyph.detail is not None
+                else glyph_hash_by_identity[id(active_glyph)]
             )
-        )
+
+            self.context_label.configure(
+                text=f"Glyph: {glyph_name} | "
+                f"Stroke {min(active_idx + 1, stroke_count + 1)} of {stroke_count}"
+            )
+
+            self.add_stroke_button.configure(state=("normal"))
+            self.remove_stroke_button.configure(state=("normal"))
+        else:
+            active_subcharacter = self.session.active_component
+            subcharacter_name = (
+                f"'{active_subcharacter.definition[0][1]}'"
+                if active_subcharacter.definition is not None
+                else subcharacter_hash_by_identity[id(active_subcharacter)]
+            )
+
+            self.context_label.configure(
+                text=f"Subcharacter: {subcharacter_name}"
+            )
+            
+            self.add_stroke_button.configure(state=("disabled"))
+            self.remove_stroke_button.configure(state=("disabled"))
 
     def leftclick_x_y(self, event: tk.Event):
         """
@@ -113,33 +139,43 @@ class StrokeEditor(tk.Frame):
         self.canvas.delete('all')
         draw_gridlines()
 
-        active_idx = self.session.active_stroke_idx
-        strokes = self.session.active_glyph_strokes
-        for stroke_idx, stroke in enumerate(strokes):
-            active = stroke_idx == active_idx
-            points = [
-                ((x * (self.session.GRID_BREAKS - 1) + 0.5) * self.session.CELL_SIZE,
-                 (y * (self.session.GRID_BREAKS - 1) + 0.5) * self.session.CELL_SIZE)
-                for x, y in stroke.control_points
-            ]
-            if len(points) >= 2:
-                self.canvas.create_line(
-                    *[coordinate for point in points for coordinate in point],
-                    fill="#444" if active else "#666",
-                    width=3 if active else 1,
-                )
-            for point_idx, (x, y) in enumerate(points):
-                self.canvas.create_rectangle(
-                    x - self.session.CELL_SIZE / 2,
-                    y - self.session.CELL_SIZE / 2,
-                    x + self.session.CELL_SIZE / 2,
-                    y + self.session.CELL_SIZE / 2,
-                    fill="#f00" if active else "#888",
-                    stipple="gray50" if active else "gray25",
-                )
-                if active:
-                    self.canvas.create_text(
-                        x - self.session.CELL_SIZE // 3,
-                        y - self.session.CELL_SIZE // 3,
-                        text=str(point_idx),
+        ac_type, ac_idx = self.session.active_component_idx
+
+        if ac_type == "glyph":
+            active_idx = self.session.active_stroke_idx
+            strokes = self.session.active_glyph_strokes
+
+            for stroke_idx, stroke in enumerate(strokes):
+                active = stroke_idx == active_idx
+                points = [
+                    ((x * (self.session.GRID_BREAKS - 1) + 0.5) * self.session.CELL_SIZE,
+                    (y * (self.session.GRID_BREAKS - 1) + 0.5) * self.session.CELL_SIZE)
+                    for x, y in stroke.control_points
+                ]
+                if len(points) >= 2:
+                    self.canvas.create_line(
+                        *[coordinate for point in points for coordinate in point],
+                        fill="#444" if active else "#666",
+                        width=3 if active else 1,
                     )
+                for point_idx, (x, y) in enumerate(points):
+                    self.canvas.create_rectangle(
+                        x - self.session.CELL_SIZE / 2,
+                        y - self.session.CELL_SIZE / 2,
+                        x + self.session.CELL_SIZE / 2,
+                        y + self.session.CELL_SIZE / 2,
+                        fill="#f00" if active else "#888",
+                        stipple="gray50" if active else "gray25",
+                    )
+                    if active:
+                        self.canvas.create_text(
+                            x - self.session.CELL_SIZE // 3,
+                            y - self.session.CELL_SIZE // 3,
+                            text=str(point_idx),
+                        )
+        else:
+            self.canvas.create_text(
+                self.session.CANVAS_SIZE // 2,
+                self.session.CANVAS_SIZE //2,
+                text="Selected component is a Subcharacter - editing must be done to the parent Character object."
+            )
