@@ -148,9 +148,10 @@ class CharacterComponentHierarchy(tk.Frame):
         tv.tag_configure("selected", background="#b2cdec")
 
     def save_glyph_detail(self, _event: tk.Event | None = None):
-        detail = self.glyph_detail_var.get().strip()
-        self.session.active_glyph.detail = detail or None
-        self.refresh()
+        if self.session.active_component_idx[0] == "glyph":
+            detail = self.glyph_detail_var.get().strip()
+            self.session.active_component.detail = detail or None
+            self.refresh()
 
     def select_tree_item(self, _event: tk.Event):
         selection = self.treeview.selection()

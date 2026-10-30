@@ -50,44 +50,51 @@ def import_glyphs_from_json(filepath: str) -> dict[str, Glyph]:
         for glyph_hash, (detail, strokes) in import_glyph_definitions_from_json(filepath).items()
     }
 
-def import_characters_and_glyphs_from_json(characters_filepath: str, glyphs_filepath: str) -> tuple[dict[str, Character], dict[str, Glyph]]:
+def import_characters_and_glyphs_from_json(
+    characters_filepath: str,
+    glyphs_filepath: str,
+) -> tuple[dict[str, Character], dict[str, Glyph]]:
     glossary_data = import_character_definitions_from_json(characters_filepath)
-    glyph_glossary_data: dict[str, Glyph] = import_glyphs_from_json(glyphs_filepath)
+    glyph_glossary_data = import_glyphs_from_json(glyphs_filepath)
 
-    output_characters: dict[str, Character]={}
+    output_characters: dict[str, Character] = {
+        character_hash: Character(
+            definition=character_data.get("definition", []),
+            glyphs=[],
+            glyph_extents=character_data.get("glyph_extents", []),
+            subcharacters=[],
+            subcharacter_extents=character_data.get("subcharacter_extents", []),
+        )
+        for character_hash, character_data in glossary_data.items()
+    }
 
     for character_hash, character_data in glossary_data.items():
+        character = output_characters[character_hash]
 
-        glyph_collection: list[Glyph]=[]
-        glyph_extent_collection: list[tuple[tuple[float,float], tuple[float,float]]]=[]
-        subcharacter_collection: list[Character]=[]
-        subcharacter_extent_collection: list[tuple[tuple[float,float], tuple[float,float]]]=[]
-
-        for glyph_hash, glyph_extent in zip(character_data.get("glyphs"), character_data.get("glyph_extents")):
+        for glyph_hash, glyph_extent in zip(
+            character_data.get("glyphs", []),
+            character_data.get("glyph_extents", []),
+        ):
             try:
-                glyph_collection.append(glyph_glossary_data[glyph_hash])
+                character.glyphs.append(glyph_glossary_data[glyph_hash])
             except KeyError as error:
                 raise KeyError(
                     f"Character {character_hash!r} references unknown glyph {glyph_hash!r}."
                 ) from error
-            glyph_extent_collection.append(glyph_extent)
+            character.glyph_extents.append(glyph_extent)
 
-        for subcharacter_hash, subcharacter_extent in zip(character_data.get("subcharacters"), character_data.get("subcharacter_extents")):
+        for subcharacter_hash, subcharacter_extent in zip(
+            character_data.get("subcharacters", []),
+            character_data.get("subcharacter_extents", []),
+        ):
             try:
-                subcharacter_collection.append(glossary_data[subcharacter_hash])
+                character.subcharacters.append(output_characters[subcharacter_hash])
             except KeyError as error:
                 raise KeyError(
-                    f"Character {character_hash!r} references unknown subcharacter {subcharacter_hash!r}."
+                    f"Character {character_hash!r} references unknown "
+                    f"subcharacter {subcharacter_hash!r}."
                 ) from error
-            subcharacter_extent_collection.append(subcharacter_extent)
-
-        output_characters[character_hash]=Character(
-            definition=character_data.get("definition", []),
-            glyphs=glyph_collection,
-            glyph_extents=glyph_extent_collection,
-            subcharacters=subcharacter_collection,
-            subcharacter_extents=subcharacter_extent_collection
-        )
+            character.subcharacter_extents.append(subcharacter_extent)
 
     return output_characters, glyph_glossary_data
 
