@@ -2,7 +2,7 @@ import tkinter as tk
 
 from src.app.components.session import AppSession
 
-class StrokeEditor(tk.Frame):
+class GlyphEditor(tk.Frame):
     """
     A grid editor for editing a Glyph's brush strokes.
     """
