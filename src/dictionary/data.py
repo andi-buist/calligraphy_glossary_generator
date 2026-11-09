@@ -17,6 +17,7 @@ def import_character_definitions_from_json(filepath: str):
     for hash, data in source_dict.items():
         glossary_data[hash]=data.copy()
         glossary_data[hash]["definition"] = [(t,d) for t,d in data.get("definition")]
+        glossary_data[hash]["index_path"] = data.get("index_path") or ""
         glossary_data[hash]["glyphs"]=data.get("glyphs")
         glossary_data[hash]["glyph_extents"]=[tuple(tuple(el) for el in sublist) for sublist in data.get("glyph_extents")]
         glossary_data[hash]["subcharacters"]=data.get("subcharacters",[])
@@ -31,23 +32,23 @@ def import_glyph_definitions_from_json(filepath: str):
     glyphs_data = {}
     for glyph_hash, data in source_dict.items():
         if isinstance(data, dict):
-            detail = data.get("detail", None)
+            index_path = data.get("index_path", data.get("detail")) or ""
             strokes_data = data["strokes"]
         else:
-            detail = None
+            index_path = ""
             strokes_data = data
         
         strokes = [[(x, y) for x, y in stroke] for stroke in strokes_data]
-        glyphs_data[glyph_hash] = (detail, strokes)
+        glyphs_data[glyph_hash] = (index_path, strokes)
     return glyphs_data
 
 def import_glyphs_from_json(filepath: str) -> dict[str, Glyph]:
     return {
         glyph_hash: Glyph(
             [BrushStroke(control_points) for control_points in strokes],
-            detail=detail,
+            index_path=index_path,
         )
-        for glyph_hash, (detail, strokes) in import_glyph_definitions_from_json(filepath).items()
+        for glyph_hash, (index_path, strokes) in import_glyph_definitions_from_json(filepath).items()
     }
 
 def import_characters_and_glyphs_from_json(
@@ -60,6 +61,7 @@ def import_characters_and_glyphs_from_json(
     output_characters: dict[str, Character] = {
         character_hash: Character(
             definition=character_data.get("definition", []),
+            index_path=character_data.get("index_path", ""),
             glyphs=[],
             glyph_extents=character_data.get("glyph_extents", []),
             subcharacters=[],
@@ -124,6 +126,7 @@ def export_characters_and_glyphs_to_json(
 
     for character_hash, character in characters.items():
         character_data[character_hash] = {"definition": character.definition,
+                                         "index_path": character.index_path,
                                          "glyphs": [],
                                          "glyph_extents": character.glyph_extents,
                                          "subcharacters": [],
@@ -143,11 +146,11 @@ def export_characters_and_glyphs_to_json(
     glyphs_data = {}
     for glyph_hash, glyph in glyphs.items():
         strokes = [stroke.control_points for stroke in glyph.strokes]
-        if glyph.detail is None:
+        if not glyph.index_path:
             glyphs_data[glyph_hash] = strokes
         else:
             glyphs_data[glyph_hash] = {
-                "detail": glyph.detail,
+                "index_path": glyph.index_path,
                 "strokes": strokes,
             }
 

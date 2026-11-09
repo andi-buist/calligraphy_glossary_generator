@@ -111,8 +111,8 @@ class CharacterEditor(tk.Frame):
             active_glyph_hash = glyph_hash_by_identity[id(active_component)]
 
             glyph_label = (
-                f"'{active_component.detail}'"
-                if active_component.detail is not None
+                f"'{active_component.index_path}'"
+                if active_component.index_path
                 else active_glyph_hash
             )
 
@@ -136,13 +136,13 @@ class CharacterEditor(tk.Frame):
         self.glyph_picker_items = sorted(
             self.session.glyph_glossary_data.items(),
             key=lambda item: (
-                item[1].detail is None,
-                (item[1].detail or "").casefold(),
+                not item[1].index_path,
+                (item[1].index_path or "").casefold(),
                 item[0],
             ),
         )
         display_values = [
-            f"'{glyph.detail}'" if glyph.detail is not None else glyph_hash
+            f"'{glyph.index_path}'" if glyph.index_path else glyph_hash
             for glyph_hash, glyph in self.glyph_picker_items
         ]
         self.glyph_picker.configure(values=display_values)

@@ -43,7 +43,7 @@ class GlyphEditor(tk.Frame):
 
         stroke_idx = self.session.active_glyph_stroke_idx
         stroke_count = len(active_glyph.strokes)
-        glyph_name = active_glyph.detail or self.session.active_glyph_hash
+        glyph_name = active_glyph.index_path or self.session.active_glyph_hash
         self.context_label.configure(
             text=f"Glyph: '{glyph_name}' | "
             f"Stroke {min(stroke_idx + 1, stroke_count + 1)} of {stroke_count}"

@@ -23,6 +23,8 @@ def build_treeview_icons(parent: tk.Misc):
 class GlossaryHierarchy(tk.Frame):
     """Tree-based glossary browser shared by character and glyph entries."""
 
+    DEFAULT_DIRECTORY_NAME = "unassigned"
+
     def __init__(self, parent, session: AppSession):
         self.session = session
         self.treeview_icons = build_treeview_icons(parent)
@@ -93,6 +95,20 @@ class GlossaryHierarchy(tk.Frame):
             parent_tree_id = self.directory_tree_ids[path]
         return parent_tree_id
 
+    def _row_for_index_path(
+        self,
+        index_path: str | None,
+    ) -> tuple[tuple[str, ...], str]:
+        path_parts = [part for part in (index_path or "").split("/") if part]
+        if path_parts and path_parts[0] == self.DEFAULT_DIRECTORY_NAME:
+            path_parts.pop(0)
+        if path_parts:
+            return (
+                tuple(path_parts[:-1]) or (self.DEFAULT_DIRECTORY_NAME,),
+                path_parts[-1],
+            )
+        return ((self.DEFAULT_DIRECTORY_NAME,), "")
+
     def refresh(self) -> None:
         tv = self.dictionary_treeview
         tv.delete(*tv.get_children())
@@ -111,18 +127,39 @@ class GlossaryHierarchy(tk.Frame):
         for path, label in self._root_groups().items():
             self._ensure_group(path, label)
 
+        entry_rows = []
         for entry_hash, entry in self._entries().items():
             for group_path, detail in self._rows_for_entry(entry):
-                parent_tree_id = self._ensure_group(group_path)
-                tags = ("selected",) if self._is_selected(entry_hash) else ("unselected",)
-                tree_id = tv.insert(
-                    parent_tree_id,
-                    tk.END,
-                    text=entry_hash,
-                    values=(detail,),
-                    tags=tags,
-                )
-                self.tree_id_to_hash[tree_id] = entry_hash
+                if isinstance(entry, Character):
+                    definition_rows = entry.definition or [("", "")]
+                    for index, (definition_type, definition) in enumerate(definition_rows):
+                        entry_rows.append(
+                            (
+                                entry_hash,
+                                (*group_path, detail) if detail else group_path,
+                                entry_hash if index == 0 else "",
+                                f"{definition_type}: {definition}" if definition_type else "",
+                            )
+                        )
+                else:
+                    entry_rows.append(
+                        (entry_hash, group_path, entry_hash, detail)
+                    )
+
+        for _, group_path, _, _ in entry_rows:
+            self._ensure_group(group_path)
+
+        for entry_hash, group_path, row_text, detail in entry_rows:
+            parent_tree_id = self._ensure_group(group_path)
+            tags = ("selected",) if self._is_selected(entry_hash) else ("unselected",)
+            tree_id = tv.insert(
+                parent_tree_id,
+                tk.END,
+                text=row_text,
+                values=(detail,),
+                tags=tags,
+            )
+            self.tree_id_to_hash[tree_id] = entry_hash
 
         self._refresh_extra_controls()
 
@@ -163,20 +200,20 @@ class GlyphHierarchy(GlossaryHierarchy):
     DEFAULT_DIRECTORY_NAME = "unassigned"
 
     def _build_extra_controls(self) -> None:
-        detail_row = ttk.Frame(self)
-        detail_row.pack(fill="x", pady=4)
-        ttk.Label(detail_row, text="Name/Path:").pack(side="left")
-        self.glyph_detail_var = tk.StringVar()
-        self.glyph_detail_var.trace_add("write", self.update_glyph_detail)
-        self.glyph_detail_entry = ttk.Entry(
-            detail_row,
-            textvariable=self.glyph_detail_var,
+        index_path_row = ttk.Frame(self)
+        index_path_row.pack(fill="x", pady=4)
+        ttk.Label(index_path_row, text="Index path:").pack(side="left")
+        self.index_path_var = tk.StringVar()
+        self.index_path_var.trace_add("write", self.update_index_path)
+        self.index_path_entry = ttk.Entry(
+            index_path_row,
+            textvariable=self.index_path_var,
             state="normal",
             takefocus=True,
         )
-        self.glyph_detail_entry.pack(side="left", fill="x", expand=True)
-        self.glyph_detail_entry.bind("<Return>", self.save_glyph_detail)
-        ttk.Button(detail_row, text="Save", command=self.save_glyph_detail).pack(side="left")
+        self.index_path_entry.pack(side="left", fill="x", expand=True)
+        self.index_path_entry.bind("<Return>", self.save_index_path)
+        ttk.Button(index_path_row, text="Save", command=self.save_index_path).pack(side="left")
 
     def _build_below_tree(self) -> None:
         ttk.Label(self, text="Character users").pack(anchor="w", pady=(6, 0))
@@ -211,12 +248,7 @@ class GlyphHierarchy(GlossaryHierarchy):
         self,
         entry: Glyph,
     ) -> list[tuple[tuple[str, ...], str]]:
-        path_parts = [part for part in (entry.detail or "").split("/") if part]
-        if path_parts and path_parts[0] == self.DEFAULT_DIRECTORY_NAME:
-            path_parts.pop(0)
-        if path_parts:
-            return [(tuple(path_parts[:-1]) or (self.DEFAULT_DIRECTORY_NAME,), path_parts[-1])]
-        return [((self.DEFAULT_DIRECTORY_NAME,), "")]
+        return [self._row_for_index_path(entry.index_path)]
 
     def _default_group_path(self) -> tuple[str, ...]:
         return (self.DEFAULT_DIRECTORY_NAME,)
@@ -237,13 +269,13 @@ class GlyphHierarchy(GlossaryHierarchy):
             if group_path == self._default_group_path()
             else group_path
         )
-        glyph.detail = "/".join((*detail_path, "example"))
+        glyph.index_path = "/".join((*detail_path, "example"))
         return glyph
 
     def _refresh_extra_controls(self) -> None:
         glyph_hash = self.session.active_glyph_hash
         glyph = self.session.glyph_glossary_data.get(glyph_hash) if glyph_hash else None
-        self.glyph_detail_var.set(glyph.detail or "" if glyph is not None else "")
+        self.index_path_var.set(glyph.index_path if glyph is not None else "")
         self.character_users_list.delete(0, tk.END)
         if glyph is None:
             return
@@ -265,20 +297,18 @@ class GlyphHierarchy(GlossaryHierarchy):
         if glyph_hash is not None:
             self.session.remove_glyph(glyph_hash)
 
-    def save_glyph_detail(self, _event: tk.Event | None = None) -> None:
+    def save_index_path(self, _event: tk.Event | None = None) -> None:
         glyph_hash = self.session.active_glyph_hash
         if glyph_hash is None:
             return
-        detail = self.glyph_detail_var.get().strip()
-        self.session.glyph_glossary_data[glyph_hash].detail = detail or None
+        index_path = self.index_path_var.get().strip()
+        self.session.glyph_glossary_data[glyph_hash].index_path = index_path
         self.session.refresh("glyphs")
 
-    def update_glyph_detail(self, *_):
+    def update_index_path(self, *_):
         glyph_hash = self.session.active_glyph_hash
         if glyph_hash is not None:
-            self.session.glyph_glossary_data[glyph_hash].detail = (
-                self.glyph_detail_var.get() or None
-            )
+            self.session.glyph_glossary_data[glyph_hash].index_path = self.index_path_var.get()
 
     @property
     def entry_type_label(self) -> str:
@@ -286,30 +316,45 @@ class GlyphHierarchy(GlossaryHierarchy):
 
     @property
     def detail_column_label(self) -> str:
-        return "Detail"
+        return "Index path"
 
 
 class CharacterHierarchy(GlossaryHierarchy):
+    DEFAULT_DIRECTORY_NAME = "unassigned"
+
+    def _build_extra_controls(self) -> None:
+        index_path_row = ttk.Frame(self)
+        index_path_row.pack(fill="x", pady=4)
+        ttk.Label(index_path_row, text="Index path:").pack(side="left")
+        self.index_path_var = tk.StringVar()
+        self.index_path_var.trace_add("write", self.update_index_path)
+        self.index_path_entry = ttk.Entry(
+            index_path_row,
+            textvariable=self.index_path_var,
+            state="normal",
+            takefocus=True,
+        )
+        self.index_path_entry.pack(side="left", fill="x", expand=True)
+        self.index_path_entry.bind("<Return>", self.save_index_path)
+        ttk.Button(index_path_row, text="Save", command=self.save_index_path).pack(side="left")
+
     def _entries(self) -> dict[str, Character]:
         return self.session.character_glossary_data
 
     def _root_groups(self) -> dict[tuple[str, ...], str]:
-        return {
-            (character_type,): character_type.title()
-            for character_type in typing.get_args(CHARACTER_TYPES)
-        }
+        return {(self.DEFAULT_DIRECTORY_NAME,): self.DEFAULT_DIRECTORY_NAME.title()}
 
     def _rows_for_entry(
         self,
         entry: Character,
     ) -> list[tuple[tuple[str, ...], str]]:
-        return [
-            ((character_type,), definition)
-            for character_type, definition in entry.definition
-        ]
+        path_parts = [part for part in entry.index_path.split("/") if part]
+        if len(path_parts) == 1 and path_parts[0] != self.DEFAULT_DIRECTORY_NAME:
+            return [(tuple(path_parts), "")]
+        return [self._row_for_index_path(entry.index_path)]
 
     def _default_group_path(self) -> tuple[str, ...]:
-        return (typing.get_args(CHARACTER_TYPES)[0],)
+        return (self.DEFAULT_DIRECTORY_NAME,)
 
     def _is_selected(self, entry_hash: str) -> bool:
         return entry_hash == self.session.active_character_hash
@@ -321,8 +366,39 @@ class CharacterHierarchy(GlossaryHierarchy):
         return entry.clone()
 
     def _create_entry(self, group_path: tuple[str, ...]) -> Character:
-        character_type = group_path[0] if group_path else self._default_group_path()[0]
-        return Character(definition=[(character_type, "example definition")])
+        index_path = (
+            ()
+            if group_path == self._default_group_path()
+            else group_path
+        )
+        return Character(
+            definition=[(typing.get_args(CHARACTER_TYPES)[0], "example definition")],
+            index_path="/".join((*index_path, "example")),
+        )
+
+    def _refresh_extra_controls(self) -> None:
+        character_hash = self.session.active_character_hash
+        character = (
+            self.session.character_glossary_data.get(character_hash)
+            if character_hash
+            else None
+        )
+        self.index_path_var.set(character.index_path if character is not None else "")
+
+    def save_index_path(self, _event: tk.Event | None = None) -> None:
+        character_hash = self.session.active_character_hash
+        if character_hash is None:
+            return
+        index_path = self.index_path_var.get().strip()
+        self.session.character_glossary_data[character_hash].index_path = index_path
+        self.session.refresh("metadata")
+
+    def update_index_path(self, *_):
+        character_hash = self.session.active_character_hash
+        if character_hash is not None:
+            self.session.character_glossary_data[character_hash].index_path = (
+                self.index_path_var.get()
+            )
 
     @property
     def entry_type_label(self) -> str:
@@ -349,17 +425,17 @@ class CharacterComponentHierarchy(tk.Frame):
         self.treeview_icons: dict[str, ImageTk.PhotoImage]=build_treeview_icons(self)
 
         # Defining glyph detail information --------
-        self.glyph_detail_var = tk.StringVar()
+        self.index_path_var = tk.StringVar()
         detail_row = tk.Frame(self)
         detail_row.pack(fill="x", pady=4)
-        tk.Label(detail_row, text="Name:").pack(side="left")
-        self.glyph_detail_entry = ttk.Entry(
+        tk.Label(detail_row, text="Index path:").pack(side="left")
+        self.index_path_entry = ttk.Entry(
             detail_row,
-            textvariable=self.glyph_detail_var,
+            textvariable=self.index_path_var,
         )
-        self.glyph_detail_entry.pack(side="left", fill="x", expand=True)
-        self.glyph_detail_entry.bind("<Return>", self.save_glyph_detail)
-        self.glyph_detail_entry.bind("<FocusOut>", self.save_glyph_detail)
+        self.index_path_entry.pack(side="left", fill="x", expand=True)
+        self.index_path_entry.bind("<Return>", self.save_index_path)
+        self.index_path_entry.bind("<FocusOut>", self.save_index_path)
 
         # Main body --------
         tree_frame = ttk.Frame(self)
@@ -417,8 +493,8 @@ class CharacterComponentHierarchy(tk.Frame):
                 "",
                 tk.END,
                 text=(
-                    f"Glyph '{glyph.detail}'"
-                    if glyph.detail is not None
+                    f"Glyph '{glyph.index_path}'"
+                    if glyph.index_path
                     else f"Glyph {glyph_hash}"
                 ),
                 open=True,
@@ -456,9 +532,9 @@ class CharacterComponentHierarchy(tk.Frame):
             self.tree_id_to_subcharacter_idx[subcharacter_item] = subcharacter_idx
 
         if ac_type == "glyph":
-            self.glyph_detail_var.set(self.session.active_component.detail or "")
+            self.index_path_var.set(self.session.active_component.index_path or "")
         else:
-            self.glyph_detail_var.set("")
+            self.index_path_var.set("")
         tv.tag_configure("selected", background="#b2cdec")
 
     def open_component(self, event: tk.Event):
@@ -494,13 +570,13 @@ class CharacterComponentHierarchy(tk.Frame):
                 self.session.select_character(character_hash)
                 self.on_page_change("Character")
 
-    def save_glyph_detail(self, _event: tk.Event | None = None):
+    def save_index_path(self, _event: tk.Event | None = None):
         if (
             self.session.active_hierarchy_idx is not None
             and self.session.active_hierarchy_idx[0] == "glyph"
         ):
-            detail = self.glyph_detail_var.get().strip()
-            self.session.active_component.detail = detail or None
+            index_path = self.index_path_var.get().strip()
+            self.session.active_component.index_path = index_path
             self.session.refresh("glyphs")
 
     def select_tree_item(self, _event: tk.Event):
@@ -516,9 +592,9 @@ class CharacterComponentHierarchy(tk.Frame):
             return
 
         if self.session.active_hierarchy_idx[0] == "glyph":
-            self.glyph_detail_var.set(self.session.active_component.detail or "")
+            self.index_path_var.set(self.session.active_component.index_path or "")
         else:
-            self.glyph_detail_var.set("")
+            self.index_path_var.set("")
 
 
 class GlyphStrokeHierarchy(tk.Frame):

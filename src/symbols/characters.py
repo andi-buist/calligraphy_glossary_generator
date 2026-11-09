@@ -28,14 +28,14 @@ def add_glyph_constants(cls):
 class Glyph:
     def __init__(self,
                  strokes: list[BrushStroke],
-                 detail: str | None = None):
+                 index_path: str = ""):
         self.strokes = [strokes] if isinstance(strokes, BrushStroke) else strokes
-        self.detail = detail
+        self.index_path = index_path
 
     def clone(self):
         clone = type(self).__new__(type(self))
         clone.strokes = copy.deepcopy(self.strokes)
-        clone.detail = copy.deepcopy(self.detail)
+        clone.index_path = copy.deepcopy(self.index_path)
         return clone
 
     def draw(self, 
@@ -59,8 +59,10 @@ class Character:
                  glyphs: list[Glyph]=[],
                  glyph_extents: list[tuple[tuple[float,float], tuple[float,float]]]=[],
                  subcharacters: list[Character]=[],
-                 subcharacter_extents: list[tuple[tuple[float,float], tuple[float,float]]]=[]):
+                 subcharacter_extents: list[tuple[tuple[float,float], tuple[float,float]]]=[],
+                 index_path: str = ""):
         self.definition = definition
+        self.index_path = index_path
         self.glyphs = glyphs
         self.glyph_extents = glyph_extents
         self.subcharacters = subcharacters
@@ -69,6 +71,7 @@ class Character:
     def clone(self):
         clone = type(self).__new__(type(self))
         clone.definition = copy.deepcopy(self.definition)
+        clone.index_path = copy.deepcopy(self.index_path)
         clone.glyphs = self.glyphs.copy()
         clone.glyph_extents = copy.deepcopy(self.glyph_extents)
         clone.subcharacters = self.subcharacters.copy()
