@@ -32,6 +32,12 @@ class Glyph:
         self.strokes = [strokes] if isinstance(strokes, BrushStroke) else strokes
         self.detail = detail
 
+    def clone(self):
+        clone = type(self).__new__(type(self))
+        clone.strokes = copy.deepcopy(self.strokes)
+        clone.detail = copy.deepcopy(self.detail)
+        return clone
+
     def draw(self, 
              extent: tuple[tuple[float,float], tuple[float,float]] = ((0.0,0.0),(1.0,1.0)), 
              size: tuple[int, int] = (GLYPH_SIZE, GLYPH_SIZE)) -> Image.Image:
@@ -65,6 +71,8 @@ class Character:
         clone.definition = copy.deepcopy(self.definition)
         clone.glyphs = self.glyphs.copy()
         clone.glyph_extents = copy.deepcopy(self.glyph_extents)
+        clone.subcharacters = self.subcharacters.copy()
+        clone.subcharacter_extents = copy.deepcopy(self.subcharacter_extents)
         return clone
 
     def draw(self, 

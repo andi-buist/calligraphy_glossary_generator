@@ -84,8 +84,6 @@ class CharacterEditor(tk.Frame):
         selected_subcharacter_hash = self._selected_subcharacter_hash()
         self.draw_canvas()
 
-        ac_type, ac_idx = self.session.active_component_idx
-
         glyph_hash_by_identity = {
             id(glyph): glyph_hash
             for glyph_hash, glyph in self.session.glyph_glossary_data.items()
@@ -96,9 +94,20 @@ class CharacterEditor(tk.Frame):
             for character_hash, character in self.session.character_glossary_data.items()
         }
 
-        active_component = self.session.active_component
+        active_component = (
+            self.session.active_component
+            if self.session.active_hierarchy_idx is not None
+            else None
+        )
 
-        if ac_type == "glyph":
+        if active_component is None:
+            self.character_label.configure(
+                text=f"Character: {self.session.active_character_hash} | No components"
+            )
+        elif (
+            self.session.active_hierarchy_idx is not None
+            and self.session.active_hierarchy_idx[0] == "glyph"
+        ):
             active_glyph_hash = glyph_hash_by_identity[id(active_component)]
 
             glyph_label = (
@@ -224,8 +233,8 @@ class CharacterEditor(tk.Frame):
 
         self.drag_mode = None
 
-        if self.session.active_component_idx is not None:
-            ac_type, ac_idx = self.session.active_component_idx
+        if self.session.active_hierarchy_idx is not None:
+            ac_type, ac_idx = self.session.active_hierarchy_idx
             if ac_type == "glyph":
                 (x0, y0), (x1, y1) = character.glyph_extents[ac_idx]
             else:
@@ -242,7 +251,6 @@ class CharacterEditor(tk.Frame):
                     self.drag_mode = corner_name
                     nearest_distance = distance
 
-            self.session.active_stroke_idx = 0
             self.drag_start = (x, y)
 
             if ac_type == "glyph":
@@ -254,14 +262,14 @@ class CharacterEditor(tk.Frame):
             self.extent_moved = False
 
     def drag_extent_motion(self, event: tk.Event):
-        if self.session.active_component_idx is None or self.drag_start is None or self.drag_extent is None:
+        if self.session.active_hierarchy_idx is None or self.drag_start is None or self.drag_extent is None:
             return
         
         x, y = self._canvas_point(event)
         dx, dy = x - self.drag_start[0], y - self.drag_start[1]
         (x0, y0), (x1, y1) = self.drag_extent
 
-        ac_type, ac_idx = self.session.active_component_idx
+        ac_type, ac_idx = self.session.active_hierarchy_idx
 
         if self.drag_mode == "move":
             grid_size = self.session.CELL_SIZE / self.session.CANVAS_SIZE
@@ -303,7 +311,7 @@ class CharacterEditor(tk.Frame):
         self.draw_canvas()
 
     def drag_extent_end(self, _event: tk.Event):
-        if self.session.active_component_idx is not None:
+        if self.session.active_hierarchy_idx is not None:
             self.session.refresh(
                 "glyphs" if self.extent_moved else "glyph-selection"
             )
@@ -325,7 +333,10 @@ class CharacterEditor(tk.Frame):
 
         character = self.session.active_character
 
-        ac_type, ac_idx = self.session.active_component_idx
+        if self.session.active_hierarchy_idx is None:
+            ac_type, ac_idx = None, None
+        else:
+            ac_type, ac_idx = self.session.active_hierarchy_idx
 
         component_dict: dict[Literal["glyph", "subcharacter"], zip[tuple[Glyph | Character, tuple[tuple[float, float], tuple[float, float]]]]] = {
             "glyph": zip(character.glyphs, character.glyph_extents),
