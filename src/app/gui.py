@@ -2,8 +2,14 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from src.app.components.session import AppSession
-from src.app.components.hierarchies import CharacterHierarchy, CharacterComponentHierarchy
-from src.app.components.characters import CharacterDefinitions, CharacterPreview
+from src.app.components.hierarchies import (
+    CharacterHierarchy,
+    CharacterComponentHierarchy,
+    GlyphHierarchy,
+    GlyphStrokeHierarchy,
+)
+from src.app.components.definitions import CharacterDefinitions
+from src.app.components.previews import CharacterPreview, GlyphPreview
 from src.app.components.character_editor import CharacterEditor
 from src.app.components.glyph_editor import GlyphEditor
 
@@ -43,7 +49,7 @@ class GlossaryEditor(tk.Frame):
 
     def _build_layout(self):
         self.views=ttk.Notebook(self)
-        self.views.pack(fill="both", padx=4, pady=4)
+        self.views.pack(fill="both", expand=True, padx=4, pady=4)
         self.views.bind("<<NotebookTabChanged>>", self.update_current_page)
 
         self.character_view=tk.Frame(self.views)
@@ -88,7 +94,11 @@ class GlossaryEditor(tk.Frame):
         self.character_right_pane.columnconfigure(0, weight=1)
         self.character_right_pane.grid(column=2, row=0, sticky="NSEW", padx=12)
 
-        self.character_component_hierarchy = CharacterComponentHierarchy(self.character_right_pane, self.session)
+        self.character_component_hierarchy = CharacterComponentHierarchy(
+            self.character_right_pane,
+            self.session,
+            self.select_page,
+        )
         self.character_component_hierarchy.pack(expand=True, fill="both")
         self.character_preview = CharacterPreview(self.character_right_pane, self.session)
         self.character_preview.pack(fill="both", pady=8)
@@ -109,42 +119,47 @@ class GlossaryEditor(tk.Frame):
         )
         self.glyph_left_pane.grid(column=0, row=0, sticky="NSEW", padx=12)
 
-        self.glyph_hierarchy = CharacterHierarchy(self.glyph_left_pane, self.session)
+        self.glyph_hierarchy = GlyphHierarchy(self.glyph_left_pane, self.session)
         self.glyph_hierarchy.pack(fill="both")
-
-        ttk.Separator(self.glyph_left_pane).pack(fill="x", pady=8)
-
-        self.glyph_definitions = CharacterDefinitions(self.glyph_left_pane, self.session)
-        self.glyph_definitions.pack(fill="both", expand=True)
 
         self.glyph_editor = GlyphEditor(self.glyph_view, self.session)
         self.glyph_editor.grid(column=1, row=0, sticky="NSEW", padx=12)
 
-        self.glyph_right_pane=tk.Frame(
+        self.glyph_right_pane = tk.Frame(
             self.glyph_view,
             padx=4,
             pady=4,
             highlightthickness=1,
-            highlightbackground="black"
-            )
+            highlightbackground="black",
+        )
         self.glyph_right_pane.columnconfigure(0, weight=1)
         self.glyph_right_pane.grid(column=2, row=0, sticky="NSEW", padx=12)
-
-        self.glyph_component_hierarchy = CharacterComponentHierarchy(self.glyph_right_pane, self.session)
-        self.glyph_component_hierarchy.pack(expand=True, fill="both")
-        self.glyph_preview = CharacterPreview(self.glyph_right_pane, self.session)
+        self.glyph_stroke_hierarchy = GlyphStrokeHierarchy(
+            self.glyph_right_pane,
+            self.session,
+        )
+        self.glyph_stroke_hierarchy.pack(fill="both", expand=True)
+        self.glyph_preview = GlyphPreview(self.glyph_right_pane, self.session)
         self.glyph_preview.pack(fill="both", pady=8)
 
     def _rebuild_character_fields(self):
         self.character_definitions.refresh()
 
     def update_current_page(self, _event: tk.Event | None = None):
-        self.session.current_page = self.views.tab(self.views.select(), "text")
+        self.session.current_page.set(self.views.tab(self.views.select(), "text"))
+
+    def select_page(self, page: str):
+        page_frame = {
+            "Character": self.character_view,
+            "Glyph": self.glyph_view,
+        }[page]
+        self.views.select(page_frame)
 
     def refresh(self, change: str = "all"):
         match change:
             case "list":
                 self.character_hierarchy.refresh()
+                self.glyph_hierarchy.refresh()
             case "metadata":
                 self.character_hierarchy.update_active_entry()
             case "preview":
@@ -153,22 +168,33 @@ class GlossaryEditor(tk.Frame):
                 self._rebuild_character_fields()
                 self.character_hierarchy.refresh()
                 self.character_editor.refresh()
+                self.glyph_hierarchy.refresh()
                 self.glyph_editor.refresh()
                 self.character_component_hierarchy.refresh()
                 self.character_preview.refresh()
+                self.glyph_stroke_hierarchy.refresh()
+                self.glyph_preview.refresh()
             case "glyphs":
                 self.character_editor.refresh()
+                self.glyph_hierarchy.refresh()
                 self.glyph_editor.refresh()
                 self.character_component_hierarchy.refresh()
                 self.character_preview.refresh()
+                self.glyph_stroke_hierarchy.refresh()
+                self.glyph_preview.refresh()
             case "glyph-selection":
                 self.character_editor.refresh()
+                self.glyph_hierarchy.refresh()
                 self.glyph_editor.refresh()
                 self.character_component_hierarchy.refresh()
+                self.glyph_stroke_hierarchy.refresh()
+                self.glyph_preview.refresh()
             case "stroke":
                 self.character_editor.refresh()
                 self.glyph_editor.refresh()
                 self.character_component_hierarchy.refresh()
                 self.character_preview.refresh()
+                self.glyph_stroke_hierarchy.refresh()
+                self.glyph_preview.refresh()
             case _:
                 self.character_preview.refresh()
