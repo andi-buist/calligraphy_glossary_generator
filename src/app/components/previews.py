@@ -44,10 +44,10 @@ class CharacterPreview(tk.Frame):
         """
         def generate_preview_image(character: Character) -> ImageTk.PhotoImage:
             glyph = character.draw()
-            (rect_area), _ = get_largest_rectangular_area(glyph)
+            # (rect_area), _ = get_largest_rectangular_area(glyph)
 
-            draw=ImageDraw.Draw(glyph, "RGBA")
-            draw.rectangle(rect_area, fill="#ff000033", outline="#ff0000")
+            # draw=ImageDraw.Draw(glyph, "RGBA")
+            # draw.rectangle(rect_area, fill="#ff000033", outline="#ff0000")
 
             return ImageTk.PhotoImage(glyph)
 
